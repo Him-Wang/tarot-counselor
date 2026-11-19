@@ -8,3 +8,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local agent secrets & runtime
+agent/config.json
+agent/__pycache__/
+__pycache__/
+*.pyc
+
+# Personal case notes (do not commit)
+cases/

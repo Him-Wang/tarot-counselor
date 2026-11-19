@@ -51,6 +51,45 @@
 想要「默认是咨询师，但遇到技术问题自动让位」——用 `persona.*.md`。
 想要「平时不打扰，只在求助时出现」——用 `SKILL.md`。
 
+## 自建 Agent（网页聊天）
+
+仓库里带了一个**零依赖**的本地网页 Agent，以及一个 GitHub Pages 静态版。两者都把「人设 / 知识 / 案例」三层分开，喂资料只放进 `knowledge/`，不改人设。
+
+### A. 本地版（支持 Ollama + DeepSeek，推荐）
+
+```bash
+cd agent
+python server.py          # 需 Python 3，仅标准库，无需 pip install
+```
+
+浏览器打开 `http://127.0.0.1:8765`，点右上角「设置」：
+- **DeepSeek**：填自己的 API key，模型 `deepseek-chat`。
+- **Ollama**：先 `ollama serve` 并拉好模型，`base_url` 用 `http://127.0.0.1:11434/v1`，key 留空。
+- 也支持任意 OpenAI 兼容端点。
+
+key 只存本机 `agent/config.json`（已 gitignore）。双击 `start.bat` 可直接启动。
+
+### B. 在线静态版（GitHub Pages）
+
+`docs/` 目录是纯前端静态站，无需后端，填入自己的 API key 后**浏览器直连** API：
+
+- 访问：https://him-wang.github.io/tarot-counselor/
+- 设置里的 key 只存在浏览器 localStorage，不上传、不过中间服务器。
+- 需要 API 服务商允许跨域（CORS）；DeepSeek 官方已验证可用。
+- Ollama 等本地模型无法在网页里直连，请用上面的本地版。
+
+> 修改 `knowledge/` 或 `prompts/persona.zh.md` 后，运行 `python build_docs.py` 重新生成 `docs/persona.js` 和 `docs/knowledge.js`，再提交即可更新在线版。
+
+## 专业知识库（让它更专业）
+
+`knowledge/` 是按需检索的资料库，结构见 `knowledge/INDEX.md`：
+- `skills/` 咨询技术　`modalities/` 流派　`issues/` 议题
+- `ethics/` 伦理与危机　`supervision/` 督导视角
+
+**喂文本的规矩**：一主题一文件，开头写标题 / 标签 / 什么时候读三行元数据；细节写进资料本身，不堆进人设；个人案例放 `cases/`（建议 gitignore，脱敏）。检索按关键词自动命中，不手动选。
+
+元规则：**牌不开口，人开口**——塔罗只用于打开话题与照见感受，风险评估、诊断、干预选择绝不从牌里来。
+
 ## 设计要点
 
 - **三层不是混合**：咨询师管姿态（不判决、不替人决定），NVC 管方法（折中用法，日常说人话），塔罗管技艺（只按传统韦特牌意与标准牌阵）。
