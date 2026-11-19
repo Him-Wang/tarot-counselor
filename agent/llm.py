@@ -22,19 +22,43 @@ def _normalize_base(base_url):
     return base
 
 
+def _is_local(base_url):
+    """True for loopback endpoints (Ollama in this app)."""
+    u = (base_url or "").lower()
+    return "127.0.0.1" in u or "localhost" in u
+
+
+def _extra_options(base_url, cfg):
+    """Return extra payload fields for local Ollama endpoints.
+
+    Local reasoning models (e.g. DeepSeek-R1 distilled / dsv4-*-heretic) keep
+    thinking ON by default and can burn the entire token budget on invisible
+    reasoning, which looks like a hang or timeout. Ollama's OpenAI-compatible
+    endpoint honours options.think=false (verified); top-level think and
+    num_ctx overrides either don't work or force a slow model reload, so we
+    do not touch them here. Remote APIs (DeepSeek etc.) get nothing extra.
+    Set cfg["think"] = True to opt back in.
+    """
+    if _is_local(base_url) and cfg.get("think") is not True:
+        return {"options": {"think": False}}
+    return {}
+
+
 def stream_chat(messages, cfg):
     """Yield assistant text tokens as they arrive.
 
     messages: [{"role": "system"|"user"|"assistant", "content": str}, ...]
     cfg: dict with base_url, api_key, model, temperature, timeout
     """
-    url = _normalize_base(cfg.get("base_url", "")) + "/chat/completions"
+    raw_base = cfg.get("base_url", "")
+    url = _normalize_base(raw_base) + "/chat/completions"
     payload = {
         "model": cfg.get("model", ""),
         "messages": messages,
         "temperature": float(cfg.get("temperature", 0.8)),
         "stream": True,
     }
+    payload.update(_extra_options(raw_base, cfg))
     headers = {"Content-Type": "application/json"}
     api_key = (cfg.get("api_key") or "").strip()
     if api_key:
@@ -80,12 +104,14 @@ def stream_chat(messages, cfg):
 
 def check(cfg):
     """Non-streaming smoke test: send one tiny message, return reply text."""
-    url = _normalize_base(cfg.get("base_url", "")) + "/chat/completions"
+    raw_base = cfg.get("base_url", "")
+    url = _normalize_base(raw_base) + "/chat/completions"
     payload = {
         "model": cfg.get("model", ""),
         "messages": [{"role": "user", "content": "只回复两个字：在线"}],
         "stream": False,
     }
+    payload.update(_extra_options(raw_base, cfg))
     headers = {"Content-Type": "application/json"}
     api_key = (cfg.get("api_key") or "").strip()
     if api_key:

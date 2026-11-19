@@ -28,7 +28,9 @@ PRESETS = {
         "base_url": "http://127.0.0.1:11434/v1",
         "api_key": "",
         "model": "qwen2.5:7b",
-        "note": "本机 Ollama。需要先启动 ollama serve 并拉好模型；api key 留空。",
+        "note": "本机 Ollama。先启动 ollama serve 并拉好模型；api key 留空。"
+                "端口按你的 Ollama 实际监听端口填（默认 11434，若改过则填实际值，如 11439）。"
+                "对本地推理模型会自动关闭 thinking（防止卡住/超时），如需开启在配置里设 think=true。",
     },
     "deepseek-flash": {
         "base_url": "https://api.deepseek.com/v1",
@@ -153,7 +155,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/config":
             cfg = load_config()
-            for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout"):
+            for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout", "think"):
                 if k in body:
                     cfg[k] = body[k]
             # don't overwrite a saved key with the masked display string
