@@ -94,14 +94,16 @@
     <div class="field">
       <label>预设</label>
       <select id="preset">
-        <option value="deepseek">DeepSeek 官方</option>
+        <option value="deepseek-flash">DeepSeek Flash（快·省）</option>
+        <option value="deepseek-v4-pro">DeepSeek V4 Pro（强）</option>
+        <option value="deepseek-chat">DeepSeek Chat（旧版）</option>
         <option value="custom">自定义（OpenAI 兼容，需支持 CORS）</option>
       </select>
       <div class="note" id="presetNote"></div>
     </div>
     <div class="field"><label>接口地址 base_url</label><input id="baseUrl" placeholder="https://api.deepseek.com/v1"></div>
     <div class="row">
-      <div class="field"><label>模型 model</label><input id="model" placeholder="deepseek-chat"></div>
+      <div class="field"><label>模型 model（可下拉选，也可手填）</label><input id="model" list="modelChoices" placeholder="deepseek-flash"><datalist id="modelChoices"><option value="deepseek-flash"><option value="deepseek-v4-pro"><option value="deepseek-chat"><option value="deepseek-reasoner"></datalist></div>
       <div class="field"><label>API key</label><input id="apiKey" type="password" placeholder="sk-…"></div>
     </div>
     <div class="row">
@@ -136,8 +138,12 @@ const KEY = 'olivia_cfg_v1';
 let history = [], streaming = false;
 
 const PRESETS = {
-  deepseek: {base_url:'https://api.deepseek.com/v1', model:'deepseek-chat',
-    note:'在 platform.deepseek.com 申请 API key。已验证本站域名可通过其跨域校验。'},
+  'deepseek-flash': {base_url:'https://api.deepseek.com/v1', model:'deepseek-flash',
+    note:'DeepSeek V4.1-Flash：快、便宜，默认带思考。在 platform.deepseek.com 申请 API key。'},
+  'deepseek-v4-pro': {base_url:'https://api.deepseek.com/v1', model:'deepseek-v4-pro',
+    note:'DeepSeek V4-Pro：更强，适合复杂问题。填自己的 API key。'},
+  'deepseek-chat': {base_url:'https://api.deepseek.com/v1', model:'deepseek-chat',
+    note:'旧版 deepseek-chat，兼容老配置。填自己的 API key。'},
   custom: {base_url:'', model:'',
     note:'任意 OpenAI 兼容端点，必须允许来自本页面的跨域（CORS）请求。'}
 };
@@ -158,15 +164,15 @@ function addMsg(role, text){
 }
 
 function loadConfig(){
-  const c=getCfg(); const p=PRESETS[c.preset]||PRESETS.deepseek;
-  $('preset').value=c.preset||'deepseek';
+  const c=getCfg(); const key=c.preset||'deepseek-flash'; const p=PRESETS[key]||PRESETS['deepseek-flash'];
+  $('preset').value=PRESETS[key]?key:'deepseek-flash';
   $('baseUrl').value=c.base_url||p.base_url;
   $('model').value=c.model||p.model;
   $('apiKey').value=c.api_key||'';
   $('temp').value=c.temperature??0.8;
   $('timeout').value=c.timeout??120;
   $('presetNote').textContent=p.note;
-  $('backendChip').textContent=(c.preset||'deepseek')+(c.api_key?' · 就绪':' · 待填 key');
+  $('backendChip').textContent=$('preset').value+(c.api_key?' · 就绪':' · 待填 key');
   const docs=window.KNOWLEDGE_DOCS||[];
   $('docList').textContent=docs.length?docs.map(d=>'· '+d.rel).join('\n'):'（暂无资料）';
 }
@@ -238,7 +244,7 @@ async function send(){
   if(streaming) return;
   const text=input.value.trim(); if(!text) return;
   const cfg=getCfg();
-  if(!cfg.api_key && (cfg.preset||'deepseek')==='deepseek'){
+  if(!cfg.api_key){
     addMsg('assistant','请先点右上角「设置」，填入你自己的 API key。'); return;
   }
   input.value=''; addMsg('user',text); history.push({role:'user',content:text});

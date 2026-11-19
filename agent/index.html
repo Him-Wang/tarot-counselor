@@ -93,7 +93,9 @@
     <div class="field">
       <label>后端预设</label>
       <select id="preset">
-        <option value="deepseek">DeepSeek 官方 API</option>
+        <option value="deepseek-flash">DeepSeek Flash（快·省）</option>
+        <option value="deepseek-v4-pro">DeepSeek V4 Pro（强）</option>
+        <option value="deepseek-chat">DeepSeek Chat（旧版）</option>
         <option value="ollama">本机 Ollama</option>
         <option value="custom">自定义（OpenAI 兼容）</option>
       </select>
@@ -105,7 +107,7 @@
       <input id="baseUrl" placeholder="https://api.deepseek.com/v1">
     </div>
     <div class="row">
-      <div class="field"><label>模型 model</label><input id="model" placeholder="deepseek-chat"></div>
+      <div class="field"><label>模型 model（可下拉选，也可手填）</label><input id="model" list="modelChoices" placeholder="deepseek-flash"><datalist id="modelChoices"><option value="deepseek-flash"><option value="deepseek-v4-pro"><option value="deepseek-chat"><option value="deepseek-reasoner"></datalist></div>
       <div class="field"><label>API key</label><input id="apiKey" type="password" placeholder="sk-…（留空则不覆盖已保存的）"></div>
     </div>
     <div class="row">
@@ -134,9 +136,18 @@ let history = [];
 let streaming = false;
 
 const PRESET_NOTE = {
-  deepseek: '填你自己的 DeepSeek API key（platform.deepseek.com 申请）。',
+  'deepseek-flash': 'DeepSeek V4.1-Flash：快、便宜，默认带思考。填自己的 API key（platform.deepseek.com）。',
+  'deepseek-v4-pro': 'DeepSeek V4-Pro：更强，适合复杂问题。填自己的 API key。',
+  'deepseek-chat': '旧版 deepseek-chat，兼容老配置。填自己的 API key。',
   ollama: '先运行 ollama serve 并拉好模型；API key 留空，模型名填本地已有的（如 qwen2.5:7b）。',
   custom: '任意 OpenAI 兼容端点：/chat/completions 接口。自行填写全部字段。'
+};
+const PRESET_MAP = {
+  'deepseek-flash': ['https://api.deepseek.com/v1','deepseek-flash'],
+  'deepseek-v4-pro': ['https://api.deepseek.com/v1','deepseek-v4-pro'],
+  'deepseek-chat': ['https://api.deepseek.com/v1','deepseek-chat'],
+  ollama: ['http://127.0.0.1:11434/v1','qwen2.5:7b'],
+  custom: ['','']
 };
 
 function addMsg(role, text){
@@ -153,7 +164,9 @@ function addMsg(role, text){
 async function loadConfig(){
   const r = await fetch('/api/config'); const d = await r.json();
   const c = d.config;
-  $('preset').value = c.backend || 'deepseek';
+  // 旧配置里的 'deepseek' 别名映射到新的 deepseek-chat 预设
+  if (c.backend === 'deepseek') c.backend = 'deepseek-chat';
+  $('preset').value = PRESET_MAP[c.backend] ? c.backend : 'deepseek-flash';
   $('baseUrl').value = c.base_url || '';
   $('model').value = c.model || '';
   $('apiKey').value = ''; // never prefill the secret
@@ -166,9 +179,8 @@ async function loadConfig(){
 }
 
 $('preset').addEventListener('change', e => {
-  const v = e.target.value;
-  const presets = {deepseek:['https://api.deepseek.com/v1','deepseek-chat'], ollama:['http://127.0.0.1:11434/v1','qwen2.5:7b'], custom:['','']};
-  $('baseUrl').value = presets[v][0]; $('model').value = presets[v][1];
+  const v = e.target.value; const p = PRESET_MAP[v] || ['',''];
+  $('baseUrl').value = p[0]; $('model').value = p[1];
   $('presetNote').textContent = PRESET_NOTE[v] || '';
 });
 

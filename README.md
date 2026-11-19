@@ -25,7 +25,11 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 ```
 
 打开 `http://127.0.0.1:8765`，点「设置」填 key。
-- **DeepSeek**：填自己的 key，模型 `deepseek-chat`。
+- **DeepSeek**：填自己的 key（platform.deepseek.com 申请），预设可选：
+  - `deepseek-flash`（V4.1-Flash，快、便宜，默认带思考）——默认
+  - `deepseek-v4-pro`（V4-Pro，更强，适合复杂问题）
+  - `deepseek-chat`（旧版，兼容老配置）
+  - 模型框也可下拉选 `deepseek-flash` / `deepseek-v4-pro` / `deepseek-chat` / `deepseek-reasoner`，或手填其他模型名。
 - **Ollama**：先 `ollama serve` 并拉好模型，`base_url` 填 `http://127.0.0.1:11434/v1`，key 留空。
 - 也支持任意 OpenAI 兼容端点。
 

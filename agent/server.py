@@ -30,11 +30,29 @@ PRESETS = {
         "model": "qwen2.5:7b",
         "note": "本机 Ollama。需要先启动 ollama serve 并拉好模型；api key 留空。",
     },
+    "deepseek-flash": {
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "",
+        "model": "deepseek-flash",
+        "note": "DeepSeek V4.1-Flash：快、便宜，默认带思考。填入你自己的 API key。",
+    },
+    "deepseek-v4-pro": {
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "",
+        "model": "deepseek-v4-pro",
+        "note": "DeepSeek V4-Pro：更强，适合复杂问题。填入你自己的 API key。",
+    },
+    "deepseek-chat": {
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "",
+        "model": "deepseek-chat",
+        "note": "旧版 deepseek-chat，兼容老配置。填入你自己的 API key。",
+    },
     "deepseek": {
         "base_url": "https://api.deepseek.com/v1",
         "api_key": "",
         "model": "deepseek-chat",
-        "note": "DeepSeek 官方 API。填入你自己的 API key。",
+        "note": "旧版别名，已由 deepseek-chat 取代。",
     },
     "custom": {
         "base_url": "",
@@ -45,10 +63,10 @@ PRESETS = {
 }
 
 DEFAULT_CONFIG = {
-    "backend": "deepseek",
-    "base_url": PRESETS["deepseek"]["base_url"],
+    "backend": "deepseek-flash",
+    "base_url": PRESETS["deepseek-flash"]["base_url"],
     "api_key": "",
-    "model": PRESETS["deepseek"]["model"],
+    "model": PRESETS["deepseek-flash"]["model"],
     "temperature": 0.8,
     "timeout": 120,
 }
