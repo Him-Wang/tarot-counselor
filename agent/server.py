@@ -18,6 +18,7 @@ Routes:
 
 import json
 import os
+import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 import llm
@@ -35,6 +36,7 @@ REPO_DIR = os.path.dirname(BASE_DIR)
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PERSONA_PATH = os.path.join(REPO_DIR, "prompts", "persona.zh.md")
 PROPHECY_PATH = os.path.join(REPO_DIR, "prompts", "prophecy.zh.md")
+TONE_PATH = os.path.join(REPO_DIR, "prompts", "tone.zh.md")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 
 PRESETS = {
@@ -88,6 +90,8 @@ DEFAULT_CONFIG = {
     "tools_enabled": True,
     "memory_enabled": True,
     "prophecy_enabled": False,
+    "two_phase_draw": True,
+    "tone_enabled": True,
 }
 
 
@@ -122,6 +126,160 @@ def load_prophecy():
             return f.read().strip()
     except Exception:
         return ""
+
+
+def load_tone():
+    """语气系统：让 Olivia 的措辞像一个真实女性塔罗师，并自然体现 NVC。"""
+    try:
+        with open(TONE_PATH, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+# ---- 两阶段抽牌：先出牌不解读，等来访者给出问题后再解读同一副牌 ----
+# 所有请求都带 session_id；新会话在 UI 里换一个 id，服务端状态随之隔离。
+_pending_draws = {}          # session_id -> {"result": ..., "at": timestamp}
+_awaiting_spread = {}        # session_id -> {"at": ...}：已问过「用哪个牌阵」，等来访者回答
+_PENDING_TTL = 30 * 60       # 30 分钟后未提问，自动放弃这副牌 / 这次选阵
+
+
+def _purge_pending():
+    now = time.time()
+    for sid in [k for k, v in _pending_draws.items()
+                if now - v.get("at", 0) > _PENDING_TTL]:
+        _pending_draws.pop(sid, None)
+    for sid in [k for k, v in _awaiting_spread.items()
+                if now - v.get("at", 0) > _PENDING_TTL]:
+        _awaiting_spread.pop(sid, None)
+
+
+def _draw_requested(message):
+    """粗判这条消息是否在要求（重新）抽牌，用来避免旧牌面污染新一轮。"""
+    text = str(message or "")
+    words = ("抽牌", "抽一张", "抽三张", "抽几张", "再抽", "重新抽", "帮我抽",
+             "占卜", "看牌", "牌阵", "抽个", "抽到")
+    return any(w in text for w in words)
+
+
+def _pick_spread(message):
+    """从消息里识别牌阵名；未指定时用默认牌阵。抽牌是本地动作，
+    牌阵选择也必须在本地完成，不能依赖模型。"""
+    text = str(message or "")
+    # 牌阵名优先匹配长名（如「凯尔特十字」先于任何短词）
+    for name in sorted(spreads_mod.SPREADS.keys(), key=len, reverse=True):
+        if name in text:
+            return name
+    # 口语化的「一张 / 1张」按单张处理
+    if "一张" in text or "1张" in text:
+        return "单张"
+    return "三张"
+
+
+def _named_spread(message):
+    """若消息明确点名了某个牌阵，返回其规范名称；否则 None。
+    牌阵选择是本地动作，不能用模型猜。"""
+    text = str(message or "")
+    # 常见口语别名 -> 规范牌阵名
+    aliases = {
+        "单张牌": "单张", "一张牌": "单张",
+        "三张牌阵": "三张", "三张牌": "三张",
+        "二择一": "二选一", "二选一牌阵": "二选一",
+    }
+    for alias, canonical in aliases.items():
+        if alias in text:
+            return canonical
+    for name in sorted(spreads_mod.SPREAD_DEFS, key=lambda d: len(d["name"]), reverse=True):
+        if name["name"] in text:
+            return name["name"]
+    # 口语的「一张 / 1张」等价于点名单张牌阵
+    if "一张" in text or "1张" in text:
+        return "单张"
+    return None
+
+
+def _spread_choice_reply():
+    """选阵轮的引导语（本地生成，不经过 LLM）；牌阵本身走结构化按钮。"""
+    return "好的呀，抽牌之前我们先定一个牌阵——点下面任意一个就好。"
+
+
+def _spread_choices():
+    """本地生成的牌阵按钮数据，按类别分组；前端据此渲染可点击按钮。"""
+    groups = {}
+    for d in spreads_mod.SPREAD_DEFS:
+        groups.setdefault(d.get("category", "其他"), []).append({
+            "name": d["name"],
+            "count": len(d.get("positions", [])),
+            "desc": d.get("desc", ""),
+            "positions": [{"name": p[0], "meaning": p[1]}
+                          for p in d.get("positions", [])],
+        })
+    return {
+        "groups": [{"category": k, "items": v} for k, v in groups.items()],
+        "auto": "三张",  # “你帮我选”按钮落到最常见的三张牌阵
+    }
+
+
+def _spread_choice_from_reply(message):
+    """把「就三张吧」「凯尔特十字」这样的回答映射到牌阵名。"""
+    named = _named_spread(message)
+    if named:
+        return named
+    text = str(message or "")
+    if "帮我选" in text or "你选" in text or "随便" in text or "默认" in text:
+        return "三张"
+    return None
+
+
+def _cards_payload(result):
+    """SSE 里推给前端的牌面数据（抽牌轮与解读轮共用）。"""
+    spread = result.get("spread", "")
+    return {
+        "spread": spread,
+        "spread_desc": result.get("spread_desc", ""),
+        "question": result.get("question", ""),
+        "layout": result.get("layout") or spreads_mod.layout(spread),
+        "items": [{
+            "position": c.get("position", ""),
+            "position_meaning": c.get("position_meaning", ""),
+            "name": c.get("name", ""),
+            "orientation": c.get("orientation", ""),
+            "image": c.get("image", ""),
+        } for c in result.get("cards", [])],
+    }
+
+
+def _pending_context(result, question):
+    """解读轮注入的硬约束：解读眼前这副牌，不重抽、不换牌。"""
+    lines = [
+        "【本轮解牌约束 · 必须遵守】",
+        "来访者上一轮已经抽出一副牌，本轮才给出问题。请只解读下面这副已抽出的牌，",
+        "不得重新抽牌、换牌、补牌，也不得凭记忆换用别的牌面。",
+        "牌阵：%s（%s）" % (result.get("spread", "未注明"), result.get("spread_desc", "")),
+        "牌面与随牌传统牌意：",
+    ]
+    for i, c in enumerate(result.get("cards") or [], 1):
+        lines.append("%d. %s（%s）：%s %s" % (
+            i, c.get("position", ""), c.get("position_meaning", ""),
+            c.get("name", ""), c.get("orientation", "")))
+        meaning = c.get("meaning", "")
+        if meaning:
+            lines.append("   传统牌意：" + str(meaning).replace("\n", " "))
+    lines.append("来访者的问题：%s" % (question or ""))
+    lines.append("请按「原本牌意 → 牌阵位置 → 对应问题 → 落到情境」逐张解读；"
+                 "这段牌面是既定依据，不可自行编造或替换。")
+    return "\n".join(lines)
+
+
+ASK_AFTER_DRAW = (
+    "好的，牌已经抽出来了——你有什么问题吗？"
+    "告诉我你想问什么，我就照着这副牌为你解读。"
+)
+
+# 抽牌轮的开场白：前端会把它打字机式地逐字打出，稍作停顿再翻牌，
+# 让「默念问题 → 翻牌 → 提问」有真正的仪式节奏。
+MEDITATE_TEXT = "好的，请在心中默念你的问题……"
+
 
 
 def mask(cfg):
@@ -254,7 +412,8 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/config":
             cfg = load_config()
             for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout",
-                      "think", "tools_enabled", "memory_enabled", "prophecy_enabled"):
+                      "think", "tools_enabled", "memory_enabled", "prophecy_enabled",
+                      "two_phase_draw", "tone_enabled"):
                 if k in body:
                     cfg[k] = body[k]
             # M1: never overwrite a saved key with a masked display string.
@@ -283,6 +442,7 @@ class Handler(BaseHTTPRequestHandler):
             message = body.get("message", "")
             history = body.get("history", [])
             images = body.get("images", [])  # list of data URLs from the UI
+            sid = str(body.get("session_id") or "default")
             cfg = load_config()
             cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
 
@@ -310,9 +470,48 @@ class Handler(BaseHTTPRequestHandler):
                 preset_reply = ("好，我已经忘掉最近记下的 %d 条线索。" % n) if n \
                     else "我这边没有找到刚记下的内容。"
 
+            # ---- 两阶段抽牌：选阵 -> 出牌 -> 提问 -> 解读 ----
+            _purge_pending()
+            two_phase = bool(cfg.get("two_phase_draw", True))
+            pending = _pending_draws.get(sid) if two_phase else None
+            pending_result = pending.get("result") if pending else None
+            asks_draw = _draw_requested(message)
+            # 来访者正在回答「用哪个牌阵」：把回答映射成牌阵名，直接抽牌。
+            waiting_spread = sid in _awaiting_spread and two_phase
+            chosen_spread = _spread_choice_from_reply(message) if waiting_spread else None
+            if chosen_spread:
+                _awaiting_spread.pop(sid, None)
+                message = chosen_spread + "抽牌"  # 让后续流程按点名牌阵处理
+                asks_draw = True
+            if pending and asks_draw:
+                # 上一轮出的牌还没解读，但来访者又要抽牌：作废旧牌，按新请求抽。
+                _pending_draws.pop(sid, None)
+                pending = None
+                pending_result = None
+            # 抽牌是纯本地动作：选阵 + 从 78 张牌客观随机抽 + 拼牌面，
+            # 全部由 tools.draw_cards 完成，不经过 LLM，因此抽牌/选阵都不需要 API key。
+            # 只有解读轮才需要大模型。
+            local_draw = None
+            spread_list_reply = None
+            spread_choices = None
+            if two_phase and preset_reply is None:
+                # 明确点名牌阵 -> 直接抽；只说「抽牌」-> 先列牌阵让他点按钮。
+                if asks_draw and _named_spread(message):
+                    local_draw = tools.draw_cards(spread=_pick_spread(message))
+                elif asks_draw:
+                    spread_list_reply = _spread_choice_reply()
+                    spread_choices = _spread_choices()
+                    _awaiting_spread[sid] = {"at": time.time()}
+
             # retrieve relevant knowledge for this turn
             context, used = knowledge.retrieve(message)
             system = load_persona()
+            # 语气系统：Olivia 的"声音"——真实女性塔罗师的措辞 + 自然 NVC。
+            # 放在人格之后、其余上下文之前，确保它稳定地盖住表达方式。
+            if cfg.get("tone_enabled", True):
+                tone = load_tone()
+                if tone:
+                    system += "\n\n---\n" + tone
             # 预言模式（仅供娱乐）：手动开启时才追加覆盖层，安全边界不放开
             if cfg.get("prophecy_enabled", False):
                 prophecy = load_prophecy()
@@ -342,8 +541,24 @@ class Handler(BaseHTTPRequestHandler):
             if vision_ctx:
                 system += "\n\n---\n" + vision_ctx
             use_tools = cfg.get("tools_enabled", True)
+            if pending_result:
+                # 解读轮：把已抽出的牌面和来访者的问题作为硬约束注入，
+                # 同时临时禁用 draw_cards 工具，模型无法重抽或换牌。
+                system += "\n\n---\n" + _pending_context(pending_result, message)
+                use_tools = False
+            elif two_phase:
+                # 抽牌轮：牌由系统在本地抽好并直接展示，完全不经过模型；
+                # 系统在本轮根本不会调用 LLM，这段说明只用于其它非抽牌消息。
+                system += ("\n\n---\n【两阶段抽牌流程】抽牌由系统在本地完成，"
+                           "牌面会自动展示，你不需要也不应该调用 draw_cards 工具。"
+                           "牌出好后只需温和地问一句来访者想问的问题，例如："
+                           "「好的，牌已经抽出来了——你有什么问题吗？告诉我你想问什么，"
+                           "我就照着这副牌为你解读。」本轮不要解读任何一张牌；"
+                           "等下一轮他给出具体问题后，才只针对这副已抽出的牌解读。")
             if use_tools:
                 system += "\n\n---\n" + tools.TOOL_GUIDE
+            # 两阶段流程下，解读轮的历史里若含上一轮的抽牌说明，不影响解牌；
+            # 关键约束已在 system 里显式给出。
             msgs = [{"role": "system", "content": system}]
             for h in history[-20:]:
                 # m11: only real conversation roles are allowed in; a client
@@ -370,31 +585,67 @@ class Handler(BaseHTTPRequestHandler):
                 # M2: keep the structured draw_cards result for this turn, so
                 # draw history records exactly the cards that were drawn.
                 turn_draw = None
-                if preset_reply is not None:
+                if local_draw is not None:
+                    # ---- 抽牌轮：纯本地完成，不调用大模型、不需要 API key ----
+                    emit({"tool": tools.summary("draw_cards", local_draw)})
+                    # 先把「默念问题」的引导语交给前端打字机式呈现，
+                    # 稍作停顿后再翻牌，最后由前端打出 ASK 提问。
+                    emit({"meditate": MEDITATE_TEXT})
+                    emit({"cards": _cards_payload(local_draw)})
+                    full.append(MEDITATE_TEXT)
+                    full.append(ASK_AFTER_DRAW)
+                    emit({"token": ASK_AFTER_DRAW})
+                    _pending_draws[sid] = {"result": local_draw, "at": time.time()}
+                    turn_draw = local_draw
+                elif preset_reply is not None:
                     full.append(preset_reply)
                     emit({"token": preset_reply})
+                elif spread_list_reply is not None:
+                    # ---- 选阵轮：纯本地列出牌阵按钮，不调用大模型 ----
+                    full.append(spread_list_reply)
+                    emit({"token": spread_list_reply})
+                    emit({"spread_choices": spread_choices})
+                elif pending_result is not None and not asks_draw:
+                    # ---- 解读轮：牌面已经抽出，直接推给前端渲染，不调工具 ----
+                    emit({"cards": _cards_payload(pending_result)})
+                    # 用工具摘要的同一格式标出这是已抽出的牌，便于用户对照。
+                    emit({"tool": tools.summary("draw_cards", pending_result)})
+                    _pending_draws.pop(sid, None)
+                    # 牌在抽牌轮已经记入记忆，这里不再重复入库。
+                    turn_draw = None
+                    for ev in llm.stream_chat_events(msgs, cfg, tools=None):
+                        if ev["type"] == "token":
+                            full.append(ev["text"])
+                            emit({"token": ev["text"]})
                 else:
                     # ---- agentic loop: model <-> tools until no tool call ----
                     MAX_ROUNDS = 6
                     for _round in range(MAX_ROUNDS):
                         round_calls = []
                         final_content = ""
+                        round_tokens = []
                         for ev in llm.stream_chat_events(
                                 msgs, cfg, tools=tools.TOOLS if use_tools else None):
                             if ev["type"] == "token":
-                                full.append(ev["text"])
-                                emit({"token": ev["text"]})
+                                # 抽牌轮先缓冲模型文本；若真的抽了牌，只输出牌面与固定提问，
+                                # 丢掉任何模型自作主张的解读或开场白。
+                                # 非抽牌轮（无工具调用）会在下面统一刷出。
+                                round_tokens.append(ev["text"])
                             elif ev["type"] == "tool_calls":
                                 round_calls = ev["calls"]
                             elif ev["type"] == "done":
                                 final_content = ev.get("content", "")
                         if not round_calls:
+                            for t in round_tokens:
+                                full.append(t)
+                                emit({"token": t})
                             break
 
                         # Build the assistant tool-call message + tool results
                         # in the exact shape the OpenAI protocol expects.
                         tc_payload = []
                         result_msgs = []
+                        stop_after_round = False
                         for c in round_calls:
                             name = c.get("name", "")
                             try:
@@ -405,20 +656,19 @@ class Handler(BaseHTTPRequestHandler):
                             emit({"tool": tools.summary(name, result)})
                             if name == "draw_cards" and result.get("ok"):
                                 turn_draw = result
+                                # 引导语 → 停顿 → 翻牌 → 提问，交给前端做打字机动画。
+                                emit({"meditate": MEDITATE_TEXT})
+                                full.append(MEDITATE_TEXT)
                                 # 把牌面单独推给前端，用于渲染牌图和牌位列表
-                                emit({"cards": {
-                                    "spread": result.get("spread", ""),
-                                    "spread_desc": result.get("spread_desc", ""),
-                                    "question": result.get("question", ""),
-                                    "layout": result.get("layout") or spreads_mod.layout(result.get("spread", "")),
-                                    "items": [{
-                                        "position": c.get("position", ""),
-                                        "position_meaning": c.get("position_meaning", ""),
-                                        "name": c.get("name", ""),
-                                        "orientation": c.get("orientation", ""),
-                                        "image": c.get("image", ""),
-                                    } for c in result.get("cards", [])],
-                                }})
+                                emit({"cards": _cards_payload(result)})
+                                if two_phase:
+                                    # 抽牌轮：只输出牌面与固定提问，本轮任何模型自作主张的
+                                    # 解读/开场白都丢弃；下一轮给出问题后再解读同一副牌。
+                                    _pending_draws[sid] = {"result": result, "at": time.time()}
+                                    full.append(ASK_AFTER_DRAW)
+                                    emit({"token": ASK_AFTER_DRAW})
+                                    stop_after_round = True
+                                    break
                             tc_payload.append({
                                 "id": c.get("id", ""),
                                 "type": "function",
@@ -432,6 +682,9 @@ class Handler(BaseHTTPRequestHandler):
                                 "tool_call_id": c.get("id", ""),
                                 "content": json.dumps(result, ensure_ascii=False),
                             })
+                        if stop_after_round:
+                            # 两阶段抽牌：本轮到此为止，不再让模型继续解读。
+                            break
                         msgs.append({
                             "role": "assistant",
                             "content": final_content or "",

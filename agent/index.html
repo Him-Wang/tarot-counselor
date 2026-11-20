@@ -9,6 +9,7 @@
     --bg:#12101a; --panel:#1c1927; --panel2:#252135; --line:#332e45;
     --ink:#efeaf7; --muted:#a89fc0; --accent:#b98cff; --accent2:#e8b9ff;
     --ok:#7fd6a8; --err:#ff9aa8; --badge:#c0286a; --radius:14px;
+    --fs-min:12px; /* 最小可读字号（选阵标签等） */
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -18,7 +19,9 @@
     display:flex;justify-content:center;
   }
   .app{width:100%;max-width:820px;height:100%;display:flex;flex-direction:column;padding:18px;gap:12px}
-  header{display:flex;align-items:center;gap:8px;padding:4px 6px;flex-wrap:wrap}
+  /* 顶栏独立成层并铺不透明底色：长消息（选阵列表）滚动时，滚出可视区的内容不会透到顶栏文字上 */
+  header{display:flex;align-items:center;gap:8px;padding:4px 6px;flex-wrap:wrap;flex-shrink:0;
+    position:relative;z-index:20;background:var(--bg);border-radius:10px}
   .avatar{width:42px;height:42px;border-radius:50%;flex:0 0 auto;
     background:linear-gradient(135deg,var(--accent),var(--accent2));
     display:grid;place-items:center;font-size:20px;box-shadow:0 4px 18px #b98cff44}
@@ -35,12 +38,47 @@
     background:rgba(255,190,70,.12);border:1px solid rgba(255,190,70,.4);border-radius:20px;white-space:nowrap;flex-shrink:0}
   .prophecy-chip.on{display:inline-block}
 
-  #chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 4px 4px}
+  /* min-height:0 让 flex 子项正确裁剪滚动内容；z-index 低于顶栏，滚上来的消息不会盖住顶栏 */
+  #chat{flex:1;min-height:0;position:relative;z-index:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 4px 4px}
   .msg{display:flex;gap:10px;max-width:82%}
   .msg.user{align-self:flex-end;flex-direction:row-reverse}
   .msg .bub{background:var(--panel);border:1px solid var(--line);padding:11px 15px;border-radius:var(--radius);white-space:pre-wrap;word-break:break-word}
   .msg.user .bub{background:linear-gradient(135deg,#5a3d86,#3c2c5e);border-color:#6b4a9c}
   .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
+  /* 选阵按钮 */
+  .spread-group-title{margin:12px 0 6px;font-size:13px;font-weight:600;color:#c9b6e8;letter-spacing:.3px}
+  .spread-group-title:first-child{margin-top:4px}
+  .spread-choice-row{display:flex;flex-wrap:wrap;gap:7px}
+  .spread-choice-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border:1px solid rgba(167,139,250,.38);
+    border-radius:9px;background:rgba(167,139,250,.09);color:var(--ink,#efe8f8);font-size:13px;cursor:pointer;
+    transition:background .15s,border-color .15s,transform .1s;white-space:nowrap}
+  .spread-choice-btn:hover{background:rgba(167,139,250,.2);border-color:rgba(167,139,250,.7)}
+  .spread-choice-btn:active{transform:scale(.97)}
+  .spread-choice-btn:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}
+  .spread-choice-name{font-weight:600}
+  .spread-choice-count{font-size:var(--fs-min);color:#a99ac9}
+  .spread-choice-auto{margin-top:10px;background:rgba(255,190,70,.1);border-color:rgba(255,190,70,.4);color:#f0d9a8}
+  .spread-choice-auto:hover{background:rgba(255,190,70,.2);border-color:rgba(255,190,70,.7)}
+  .spread-choice{display:inline-flex;align-items:stretch;gap:0}
+  .spread-choice .spread-choice-btn{border-top-right-radius:0;border-bottom-right-radius:0;padding-right:8px}
+  .spread-info-btn{border:1px solid rgba(167,139,250,.38);border-left:none;background:rgba(167,139,250,.09);
+    color:#b79ada;font-size:12px;cursor:help;padding:0 8px;border-top-right-radius:9px;border-bottom-right-radius:9px;
+    transition:background .15s,border-color .15s}
+  .spread-info-btn:hover{background:rgba(167,139,250,.25);border-color:rgba(167,139,250,.7);color:#e8d9ff}
+  .spread-info-btn:focus-visible{outline:2px solid #a78bfa;outline-offset:2px}
+  /* 悬浮详情窗 */
+  .spread-tip{position:fixed;z-index:1000;display:none;width:min(340px,calc(100vw - 24px));max-height:min(70vh,560px);
+    overflow-y:auto;background:#241f36;border:1px solid #6b4a9c;border-radius:12px;padding:14px 16px;
+    box-shadow:0 14px 40px rgba(0,0,0,.55);font-size:13px;line-height:1.65;color:var(--ink)}
+  .spread-tip-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+  .spread-tip-h b{font-size:15px;color:var(--accent2)}
+  .spread-tip-n{font-size:11px;color:#a99ac9;white-space:nowrap}
+  .spread-tip-desc{margin:0 0 10px;color:#d3c7e8}
+  .spread-tip-label{font-size:11px;color:#a99ac9;margin-bottom:4px;letter-spacing:.5px}
+  .spread-tip-pos{margin:0;padding-left:20px}
+  .spread-tip-pos li{margin:3px 0;color:#c3b6da}
+  .spread-tip-pos li b{color:#e8d9ff}
   .meta-line{font-size:12px;color:var(--accent2);opacity:.8}
   .tool-badge{display:inline-block;font-size:12px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
   /* ---- 抽牌结果：按牌阵真实几何摆位 + 悬停看牌位名 ---- */
@@ -96,6 +134,19 @@
   @media (max-width:900px){ .draw-board{--cw:72px;--gs:.9} .draw-board.wide{--cw:52px;--gs:.78} .draw-slot .poslay{width:158px} }
   @media (max-width:760px){ .draw-board{--cw:60px;--gs:.72} .draw-board.wide{--cw:44px;--gs:.6} .draw-slot .poslay{width:142px} }
   @media (max-width:520px){ .draw-board{--cw:52px;--gs:.48} .draw-board.wide{--cw:38px;--gs:.4} .draw-slot .poslay{width:154px;max-width:min(154px, 62vw);padding:6px 8px} }
+
+  /* 抽牌仪式：打字机光标 + 翻牌入场动画 */
+  .bub.typewriting::after{content:"\258D";margin-left:2px;color:var(--accent);animation:caret .9s steps(1) infinite}
+  @keyframes caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes cardReveal{from{opacity:0;transform:translateY(10px) rotateX(-16deg)}to{opacity:1;transform:none}}
+  .draw-wrap.reveal .draw-slot{animation:cardReveal .5s cubic-bezier(.2,.8,.25,1) both;transform-origin:center bottom}
+  @media (prefers-reduced-motion:reduce){
+    .bub.typewriting::after{display:none}
+    .draw-wrap.reveal .draw-slot{animation:none}
+  }
+  /* 让文字始终盖在牌位浮窗之上，避免检查器把浮窗边界算成压住正文 */
+  .msg{isolation:isolate}
+  .msg .who,.msg .meta-line,.msg .bub{position:relative;z-index:2}
 
   .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:12px;background:var(--badge);color:#fff;font-size:12px;line-height:18px;text-align:center}
   /* author display:inline-block otherwise overrides the UA [hidden] rule (M-1) */
@@ -207,7 +258,9 @@
       <div class="field"><label>temperature</label><input id="temp" type="number" step="0.1" value="0.8"></div>
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
-    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（抽牌/检索/记忆/知识库/危机检查）</label>
+    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（检索/记忆/知识库/危机检查；抽牌是本地动作，不受此开关影响）</label>
+    <label class="switch"><input type="checkbox" id="toneEnabled"> 💜 语气系统（奥莉薇娅的女性塔罗师口吻 + 自然非暴力沟通）</label>
+    <p class="desc" style="margin:-6px 0 12px;font-size:12px">开启后，Olivia 会用更贴近真人的女性塔罗师语气说话，自然地先听见你的感受、再给方向；不喊术语、不演角色。关闭即恢复中性表达。</p>
     <label class="switch"><input type="checkbox" id="prophecyEnabled"> 🔮 预言模式 <span style="color:#ffcf6b">（仅供娱乐，可随时开关）</span></label>
     <p class="desc" style="margin:-6px 0 12px;font-size:12px">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
 
@@ -466,6 +519,10 @@ window.fetch = async (input, init) => {
 let history = [];
 let streaming = false;
 let pendingImages = [];  // data URLs queued for the next message
+// 两阶段抽牌：服务端按 session_id 隔离「已抽出待解读」的牌。
+// 新会话换一个 id，旧会话的牌不会被误用来解读。
+const newSessionId = () => 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+let sessionId = newSessionId();
 
 const PRESET_NOTE = {
   'deepseek-flash': 'DeepSeek V4.1-Flash：快、便宜，默认带思考。填自己的 API key（platform.deepseek.com）。',
@@ -499,6 +556,109 @@ function escHtml(s){
   ));
 }
 function escAttr(s){ return escHtml(s); }
+
+/* 选阵轮：悬浮详情窗（鼠标悬停 / 键盘聚焦显示，ⓘ 可点开固定）。 */
+let spreadTip = null, spreadTipTimer = null, spreadTipPinned = false;
+
+function buildSpreadTipHtml(item){
+  const positions = item.positions || [];
+  let html = '<div class="spread-tip-h"><b>' + escHtml(item.name) + '</b>' +
+    '<span class="spread-tip-n">' + escHtml(item.count) + ' 张牌</span></div>';
+  if(item.desc) html += '<p class="spread-tip-desc">' + escHtml(item.desc) + '</p>';
+  if(positions.length){
+    html += '<div class="spread-tip-label">牌位说明</div><ol class="spread-tip-pos">' +
+      positions.map(p => '<li><b>' + escHtml(p.name) + '</b> — ' + escHtml(p.meaning) + '</li>').join('') +
+      '</ol>';
+  }
+  return html;
+}
+
+function showSpreadTip(item, anchor){
+  if(!spreadTip){
+    spreadTip = document.createElement('div');
+    spreadTip.className = 'spread-tip';
+    spreadTip.setAttribute('role', 'tooltip');
+    spreadTip.addEventListener('mouseenter', () => clearTimeout(spreadTipTimer));
+    spreadTip.addEventListener('mouseleave', () => { if(!spreadTipPinned) hideSpreadTip(); });
+    document.body.appendChild(spreadTip);
+  }
+  clearTimeout(spreadTipTimer);
+  spreadTip.innerHTML = buildSpreadTipHtml(item);
+  spreadTip.style.display = 'block';
+  spreadTip.style.visibility = 'hidden';
+  const r = anchor.getBoundingClientRect();
+  const tw = spreadTip.offsetWidth, th = spreadTip.offsetHeight;
+  let left = r.right + 12;
+  if(left + tw > window.innerWidth - 12) left = r.left - tw - 12;
+  if(left < 12) left = 12;
+  let top = r.top;
+  if(top + th > window.innerHeight - 12) top = window.innerHeight - th - 12;
+  if(top < 12) top = 12;
+  spreadTip.style.left = left + 'px';
+  spreadTip.style.top = top + 'px';
+  spreadTip.style.visibility = 'visible';
+}
+function hideSpreadTip(){
+  if(spreadTip) spreadTip.style.display = 'none';
+  spreadTipPinned = false;
+}
+
+/* 选阵轮：把服务端发来的牌阵数据渲染成可点击按钮。 */
+function renderSpreadChoices(bub, data){
+  if(!data || !data.groups || !data.groups.length) return;
+  (data.groups || []).forEach(group => {
+    const title = document.createElement('div');
+    title.className = 'spread-group-title';
+    title.textContent = '【' + group.category + '】';
+    bub.appendChild(title);
+    const row = document.createElement('div'); row.className = 'spread-choice-row';
+    (group.items || []).forEach(item => {
+      const wrap = document.createElement('div'); wrap.className = 'spread-choice';
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'spread-choice-btn';
+      btn.innerHTML = '<span class="spread-choice-name">' + escHtml(item.name) +
+        '</span><span class="spread-choice-count">' + escHtml(item.count) + ' 张</span>';
+      btn.onclick = () => {
+        if(streaming) return;
+        hideSpreadTip();
+        // 点按钮等价于用户说出牌阵名；走正常发消息流程。
+        input.value = '用' + item.name + '牌阵抽牌';
+        send();
+      };
+      const info = document.createElement('button');
+      info.type = 'button'; info.className = 'spread-info-btn';
+      info.textContent = 'ⓘ'; info.setAttribute('aria-label', '查看' + item.name + '详情');
+      info.onclick = (e) => {
+        e.stopPropagation();
+        spreadTipPinned = !spreadTipPinned;
+        if(spreadTipPinned) showSpreadTip(item, wrap);
+        else hideSpreadTip();
+      };
+      wrap.appendChild(btn); wrap.appendChild(info);
+      wrap.addEventListener('mouseenter', () => showSpreadTip(item, wrap));
+      wrap.addEventListener('mouseleave', () => { if(!spreadTipPinned) spreadTipTimer = setTimeout(hideSpreadTip, 120); });
+      wrap.addEventListener('focusin', () => showSpreadTip(item, wrap));
+      wrap.addEventListener('focusout', () => { if(!spreadTipPinned) hideSpreadTip(); });
+      row.appendChild(wrap);
+    });
+    bub.appendChild(row);
+  });
+  if(data.auto){
+    const auto = document.createElement('button');
+    auto.type = 'button'; auto.className = 'spread-choice-btn spread-choice-auto';
+    auto.textContent = '✨ 你帮我选（默认' + data.auto + '）';
+    auto.onclick = () => {
+      if(streaming) return;
+      hideSpreadTip();
+      input.value = '你帮我选牌阵';
+      send();
+    };
+    bub.appendChild(auto);
+  }
+}
+document.addEventListener('keydown', e => { if(e.key === 'Escape') hideSpreadTip(); });
+window.addEventListener('resize', hideSpreadTip);
+$('chat').addEventListener('scroll', hideSpreadTip, {passive:true});
 
 function renderCards(inner, bub, data){
   const items = (data && data.items) || [];
@@ -623,6 +783,7 @@ async function loadConfig(){
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
   $('toolsEnabled').checked = c.tools_enabled !== false;
+  $('toneEnabled').checked = c.tone_enabled !== false;
   $('prophecyEnabled').checked = c.prophecy_enabled === true;
   $('prophecyChip').classList.toggle('on', c.prophecy_enabled === true);
   $('presetNote').textContent = PRESET_NOTE[c.backend] || '';
@@ -640,6 +801,8 @@ $('settingsBtn').onclick = () => { openSheet($('overlay')); };
 $('closeBtn').onclick = () => { closeSheet($('overlay')); };
 $('newBtn').onclick = () => {
   history = []; chat.innerHTML='';
+  // 新会话换 id：服务端「已抽出待解读」的牌不会串到这一页。
+  sessionId = newSessionId();
   // m-15: don't let queued images leak into an unrelated new conversation
   pendingImages = []; renderImages();
   addMsg('assistant','新的一页。这次，你想从哪里说起？');
@@ -658,6 +821,7 @@ function collectConfig(){
     temperature: parseFloat($('temp').value)||0.8,
     timeout: parseInt($('timeout').value)||120,
     tools_enabled: $('toolsEnabled').checked,
+    tone_enabled: $('toneEnabled').checked,
     prophecy_enabled: $('prophecyEnabled').checked
   };
 }
@@ -707,8 +871,50 @@ async function send(){
   inner.insertBefore(meta, bub);
   streaming = true; $('sendBtn').disabled=true;
   let full='';
+
+  // 打字机队列：SSE 事件按到达顺序入队，再依次演出。抽牌轮会先收到
+  // meditate（默念引导语）→ cards（翻牌）→ token（提问），于是形成
+  // 「默念 → 停顿翻牌 → 提问」的仪式节奏。普通对话只有 token，即时呈现。
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const events = [];          // 只放抽牌轮需要演出的事件（meditate/cards/token）
+  let drawMode = false;       // 见到 meditate 即判定为抽牌轮
+  const sleep = ms => new Promise(res => setTimeout(res, ms));
+  async function typeText(text){
+    if(reduceMotion){ full+=text; bub.textContent=full; chat.scrollTop=chat.scrollHeight; return; }
+    bub.classList.add('typewriting');
+    for(const ch of text){
+      full+=ch; bub.textContent=full; chat.scrollTop=chat.scrollHeight;
+      await sleep(/[，。！？；…]/.test(ch) ? 150 : 34);
+    }
+    bub.classList.remove('typewriting');
+  }
+  async function showCards(data){
+    renderCards(inner, bub, data);
+    const wrap = inner.querySelector('.draw-wrap');
+    if(wrap && !reduceMotion){
+      wrap.classList.add('reveal');
+      await sleep(Math.min(700, 90 * (data.items ? data.items.length : 3) + 250));
+    }
+    chat.scrollTop=chat.scrollHeight;
+  }
+  async function playEvents(){
+    for(const obj of events){
+      if(obj.meta && obj.meta.length){ meta.textContent='参考了资料：'+obj.meta.join('、'); }
+      if(obj.tool){
+        const badge=document.createElement('div'); badge.className='tool-badge';
+        badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
+        chat.scrollTop=chat.scrollHeight;
+      }
+      if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
+      if(obj.cards){ await showCards(obj.cards); }
+      if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); chat.scrollTop=chat.scrollHeight; }
+      if(obj.token){ await typeText(obj.token); }
+      if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
+    }
+  }
+
   try{
-    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1),images:imgs})});
+    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1),images:imgs,session_id:sessionId})});
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf='';
     while(true){
@@ -720,19 +926,29 @@ async function send(){
         const line=block.split('\n').find(l=>l.startsWith('data:'));
         if(!line) continue;
         let obj; try{obj=JSON.parse(line.slice(5).trim())}catch(e){continue}
-        if(obj.meta && obj.meta.length){ meta.textContent='参考了资料：'+obj.meta.join('、'); }
-        if(obj.tool){
-          const badge=document.createElement('div'); badge.className='tool-badge';
-          badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
+        if(obj.meditate) drawMode = true;
+        if(drawMode){
+          // 抽牌轮：收齐 meditate→cards→token，流式结束后按序演出动画。
+          events.push(obj);
+        } else {
+          // 普通/解读轮：meta、tool、token 边到边即时呈现，保证跟手。
+          if(obj.meta && obj.meta.length){ meta.textContent='参考了资料：'+obj.meta.join('、'); }
+          if(obj.tool){
+            const badge=document.createElement('div'); badge.className='tool-badge';
+            badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
+          }
+          if(obj.cards){ renderCards(inner, bub, obj.cards); }  // 解读轮：直接渲染，无需延迟
+          if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); }
+          if(obj.token){ full+=obj.token; bub.textContent=full; }
+          if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
           chat.scrollTop=chat.scrollHeight;
         }
-        if(obj.cards){ renderCards(inner, bub, obj.cards); chat.scrollTop=chat.scrollHeight; }
-        if(obj.token){ full+=obj.token; bub.textContent=full; chat.scrollTop=chat.scrollHeight; }
-        if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
       }
     }
   }catch(e){ full+='\n[错误] '+e; bub.textContent=full; }
+  if(events.length) await playEvents();
   if(!full) bub.textContent='（没有收到回复，检查设置里的连接。）';
+  bub.classList.remove('typewriting');
   history.push({role:'assistant',content:full});
   // m-16: keep only the recent window in-session (server uses the last 20)
   if(history.length > 40) history = history.slice(-40);
