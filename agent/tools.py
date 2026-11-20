@@ -12,19 +12,16 @@ Design rules:
 """
 
 import json
+import os
 import random
 
 import knowledge
 import memory
 import plugin_kb
+import spreads as spreads_mod
 
-# Standard spreads and their position labels (RWS tradition).
-SPREADS = {
-    "单张": ["指引"],
-    "三张": ["过去", "现在", "未来"],
-    "凯尔特十字": ["现状", "阻碍", "意识目标", "潜意识根基", "过去", "未来",
-                 "自我", "所处环境", "希望与恐惧", "最终结果"],
-}
+# 牌阵定义集中在 spreads.py；这里取 {名称: [牌位名, ...]} 的映射。
+SPREADS = spreads_mod.SPREADS
 
 # Canonical 78-card RWS deck for DRAWING (exactly one entry per card).
 # memory.CARD_NAMES is intentionally an alias-rich list for *detection*
@@ -38,19 +35,43 @@ _RANKS = ["王牌", "二", "三", "四", "五", "六", "七", "八", "九", "十
 DECK = _MAJORS + [s + r for s in _SUITS for r in _RANKS]   # 22 + 56 = 78
 assert len(DECK) == 78 and len(set(DECK)) == 78
 
+# ---- 牌面图片（RWS 公有领域扫描，位于 agent/cards/）----
+CARDS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards")
+_SUIT_SLUG = {"权杖": "wands", "圣杯": "cups", "宝剑": "swords", "星币": "pentacles"}
+_RANK_SLUG = {"王牌": "ace", "二": "two", "三": "three", "四": "four", "五": "five",
+              "六": "six", "七": "seven", "八": "eight", "九": "nine", "十": "ten",
+              "侍从": "page", "骑士": "knight", "王后": "queen", "国王": "king"}
+
+
+def card_image(name):
+    """牌名 → 图片相对路径（如 cards/major-00.jpeg）；无对应图返回 ''。"""
+    if name in _MAJORS:
+        return "cards/major-%02d.jpeg" % _MAJORS.index(name)
+    for suit, slug in _SUIT_SLUG.items():
+        if name.startswith(suit):
+            rank = name[len(suit):]
+            rs = _RANK_SLUG.get(rank)
+            if rs:
+                return "cards/minor-%s-%s.jpeg" % (slug, rs)
+    return ""
+
 TOOL_GUIDE = """【可用工具 / 必须遵守】
 - draw_cards(spread, question)：来访者请求抽牌、占卜、看牌时**必须**调用此工具。
-  spread 只能是「单张」「三张」「凯尔特十字」。牌面由工具客观随机产生，
-  你绝不能自己编牌名、挑牌、换牌，也不能把记忆里的旧牌当作本次牌面。
-  工具会在每张牌上返回传统牌意（核心/正位/逆位）——这是解牌的既定依据，
+  spread 只能从下面的牌阵清单里选，不要自己发明牌阵名：
+%s
+  牌面由工具客观随机产生，你绝不能自己编牌名、挑牌、换牌，也不能把记忆里的旧牌当作本次牌面。
+  工具会在每张牌上返回传统牌意（核心/正位/逆位）和一个牌阵位置说明——这是解牌的既定依据，
   必须依据它来解，按「牌意→牌阵位置→对应问题→落到情境」的顺序，不可自行编造或替换牌意。
+  选牌阵的原则：先用最简单的能回答问题的牌阵；问题复杂、牵扯多方、或需要看长期脉络时，
+  才用更完整的牌阵。不要为了让解读显得隆重就选大牌阵。
 - search_knowledge(query)：需要专业资料（咨询技术、伦理、危机干预）时调用。
 - save_memory(kind, text)：来访者明确表达偏好/边界，或说「请记住」时调用。
 - crisis_check(text)：察觉自伤、安全风险或严重侵害时调用；命中后立即跳出塔罗师角色走安全流程。
 - save_note(title, content, tags)：来访者要求「记到知识库/归档/笔记本」、或值得长期留存的
   结构化内容（问卷、清单、重要决定）时调用。它与 save_memory 不同：这里是用户主动归档的笔记。
 - search_notes(query)：需要调阅用户此前归档的笔记/知识库内容时调用。
-调用工具后，依据工具返回的结果继续；工具没给的信息绝不编造。"""
+调用工具后，依据工具返回的结果继续；工具没给的信息绝不编造。""" % spreads_mod.catalogue()
+
 
 
 TOOLS = [
@@ -66,7 +87,7 @@ TOOLS = [
                     "spread": {
                         "type": "string",
                         "enum": list(SPREADS.keys()),
-                        "description": "牌阵：单张 / 三张 / 凯尔特十字",
+                        "description": "牌阵名，只能从清单里选（单张/三张/关系/二选一/凯尔特十字/四季牌阵……）",
                     },
                     "question": {
                         "type": "string",
@@ -164,20 +185,23 @@ TOOLS = [
 def draw_cards(spread="三张", question=""):
     """Objective random draw. Returns structured result for the model."""
     spread = spread if spread in SPREADS else "三张"
-    positions = SPREADS[spread]
+    meta = spreads_mod.SPREAD_META.get(spread) or {}
+    pos_pairs = meta.get("positions") or [(p, "") for p in SPREADS[spread]]
     rng = random.SystemRandom()
     # Sample WITHOUT replacement from the canonical 78-card deck: the same
     # card cannot appear twice in one spread (standard tarot rule).
-    indices = rng.sample(range(78), len(positions))
+    indices = rng.sample(range(78), len(pos_pairs))
     cards = []
-    for pos, idx in zip(positions, indices):
+    for (pos, pos_meaning), idx in zip(pos_pairs, indices):
         name = DECK[idx]
         reversed_ = bool(rng.getrandbits(1))
         orientation = "逆位" if reversed_ else "正位"
         cards.append({
             "position": pos,
+            "position_meaning": pos_meaning,
             "name": name,
             "orientation": orientation,
+            "image": card_image(name),
             # 传统牌意由工具随牌面一并返回，作为解牌的既定依据；
             # 模型不得自行编造或替换这里的牌意。
             "meaning": knowledge.get_card_meaning(name, orientation),
@@ -185,10 +209,12 @@ def draw_cards(spread="三张", question=""):
     return {
         "ok": True,
         "spread": spread,
+        "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
         "cards": cards,
         "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
-                "请依据每张牌随附的传统牌意（核心/正位/逆位）解读，不要自行编造牌意。",
+                "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
+                "不要自行编造牌意，也不要把其他牌位的含义套到这里。",
     }
 
 
@@ -263,7 +289,8 @@ def summary(name, result):
         cards = "、".join("%s%s" % (c["name"], c["orientation"])
                         for c in result["cards"][:3])
         more = "…" if len(result["cards"]) > 3 else ""
-        return "抽牌：%s（%s）%s" % (result["spread"], cards, more)
+        total = len(result.get("cards") or [])
+        return "抽牌：%s · %d 张（%s）%s" % (result["spread"], total, cards, more)
     if name == "search_knowledge":
         return "检索资料：%s" % ("、".join(result.get("docs") or []) or "无匹配")
     if name == "save_memory":

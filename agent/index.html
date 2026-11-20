@@ -36,13 +36,24 @@
   .prophecy-chip.on{display:inline-block}
 
   #chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 4px 4px}
-  .msg{display:flex;gap:10px;max-width:88%}
+  .msg{display:flex;gap:10px;max-width:82%}
   .msg.user{align-self:flex-end;flex-direction:row-reverse}
   .msg .bub{background:var(--panel);border:1px solid var(--line);padding:11px 15px;border-radius:var(--radius);white-space:pre-wrap;word-break:break-word}
   .msg.user .bub{background:linear-gradient(135deg,#5a3d86,#3c2c5e);border-color:#6b4a9c}
   .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
   .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
-  .tool-badge{display:inline-block;font-size:11px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
+  .tool-badge{display:inline-block;font-size:12px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
+  /* ---- 抽牌结果：牌面图 + 牌位 ---- */
+  .draw-block{margin:2px 0 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .draw-card{width:92px;display:flex;flex-direction:column;gap:5px}
+  .draw-card .pos{font-size:12px;color:#b9a7dc;line-height:1.3;text-align:center;word-break:break-word}
+  .draw-card .face{position:relative;width:92px;height:157px;border-radius:8px;overflow:hidden;background:rgba(120,90,170,.12);border:1px solid rgba(150,115,205,.3)}
+  .draw-card .face img{width:100%;height:100%;object-fit:cover;display:block}
+  .draw-card .face.rev img{transform:rotate(180deg)}
+  .draw-card .tip{font-size:12px;color:#d9cdf2;text-align:center;line-height:1.35}
+  .draw-card .tip .rev-tag{color:#ffb4c8}
+  .draw-head{font-size:12px;color:#c9b6ef;margin:0 0 6px}
+  .draw-head b{color:#efe6ff;font-weight:600}
   .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:12px;background:var(--badge);color:#fff;font-size:12px;line-height:18px;text-align:center}
   .care-row{padding:9px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
   .care-row .t{font-size:13px;font-weight:600}
@@ -392,6 +403,38 @@ function addMsg(role, text){
   return {bub, inner};
 }
 
+function escHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+function escAttr(s){ return escHtml(s); }
+
+function renderCards(inner, bub, data){
+  const items = (data && data.items) || [];
+  if(!items.length) return;
+  const head = document.createElement('div');
+  head.className = 'draw-head';
+  head.innerHTML = '<b>'+escHtml(data.spread||'抽牌')+'</b>　' + items.length + ' 张';
+  inner.insertBefore(head, bub);
+  const block = document.createElement('div');
+  block.className = 'draw-block';
+  items.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'draw-card';
+    const img = c.image ? ('<img src="'+escAttr(c.image)+'" alt="'+escAttr(c.name)+'" loading="lazy">') : '';
+    const rev = c.orientation === '逆位' ? ' rev' : '';
+    card.innerHTML =
+      '<div class="pos">'+escHtml(c.position||'')+'</div>'+
+      '<div class="face'+rev+'">'+img+'</div>'+
+      '<div class="tip">'+escHtml(c.name||'')+
+        (c.orientation ? '<br><span class="rev-tag">'+escHtml(c.orientation)+'</span>' : '')+
+      '</div>';
+    block.appendChild(card);
+  });
+  inner.insertBefore(block, bub);
+}
+
 async function loadConfig(){
   let d;
   try {
@@ -507,6 +550,7 @@ async function send(){
           badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
           chat.scrollTop=chat.scrollHeight;
         }
+        if(obj.cards){ renderCards(inner, bub, obj.cards); chat.scrollTop=chat.scrollHeight; }
         if(obj.token){ full+=obj.token; bub.textContent=full; chat.scrollTop=chat.scrollHeight; }
         if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
       }

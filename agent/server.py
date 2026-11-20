@@ -24,6 +24,7 @@ import llm
 import knowledge
 import memory
 import tools
+import spreads as spreads_mod
 import scheduler
 import watchers
 import plugin_kb
@@ -143,6 +144,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_static(self, root_dir, rel, ctype):
+        """安全地发送 root_dir 下的静态文件（禁止路径穿越）。"""
+        rel = rel.split("?")[0]
+        target = os.path.abspath(os.path.join(root_dir, rel))
+        root_abs = os.path.abspath(root_dir)
+        if not target.startswith(root_abs + os.sep) or not os.path.isfile(target):
+            self._send_json({"error": "not found"}, 404)
+            return
+        try:
+            with open(target, "rb") as f:
+                body = f.read()
+        except Exception:
+            self._send_json({"error": "not found"}, 404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _body(self):
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -168,9 +190,13 @@ class Handler(BaseHTTPRequestHandler):
                 "config": mask(load_config()),
                 "presets": PRESETS,
                 "docs": knowledge.list_docs(),
+                "spreads": spreads_mod.list_spreads(),
             })
         elif p == "/api/knowledge":
             self._send_json({"docs": knowledge.list_docs()})
+        elif p.startswith("/cards/"):
+            self._send_static(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards"),
+                              p[len("/cards/"):], "image/jpeg")
         elif p == "/api/memory":
             self._send_json({
                 "enabled": load_config().get("memory_enabled", True),
@@ -343,6 +369,20 @@ class Handler(BaseHTTPRequestHandler):
                                 args = {}
                             result = tools.execute(name, args)
                             emit({"tool": tools.summary(name, result)})
+                            if name == "draw_cards" and result.get("ok"):
+                                # 把牌面单独推给前端，用于渲染牌图和牌位列表
+                                emit({"cards": {
+                                    "spread": result.get("spread", ""),
+                                    "spread_desc": result.get("spread_desc", ""),
+                                    "question": result.get("question", ""),
+                                    "items": [{
+                                        "position": c.get("position", ""),
+                                        "position_meaning": c.get("position_meaning", ""),
+                                        "name": c.get("name", ""),
+                                        "orientation": c.get("orientation", ""),
+                                        "image": c.get("image", ""),
+                                    } for c in result.get("cards", [])],
+                                }})
                             tc_payload.append({
                                 "id": c.get("id", ""),
                                 "type": "function",
