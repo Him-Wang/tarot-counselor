@@ -10,13 +10,6 @@
 
 ## 快速开始
 
-### 在线网页（最简单，不用装东西）
-
-**https://him-wang.github.io/tarot-counselor/**
-
-打开 → 右上角「设置」→ 选 DeepSeek → 填你自己的 API key → 开始聊。
-纯静态页面，浏览器直连 API；key 只存在浏览器 localStorage，不上传、不过中间服务器。需要 API 服务商允许跨域（DeepSeek 官方已验证可用）。
-
 ### 本地网页（支持 Ollama + DeepSeek）
 
 ```bash
@@ -33,7 +26,7 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 - **Ollama**：先 `ollama serve` 并拉好模型，`base_url` 填 `http://127.0.0.1:11434/v1`，key 留空。
 - 也支持任意 OpenAI 兼容端点。
 
-双击 `start.bat` 可直接启动。key 只存本机 `agent/config.json`（已 gitignore）。Ollama 只能在本地版用，网页版没法直连本机模型。
+双击 `start.bat` 可直接启动。key 只存本机 `agent/config.json`（已 gitignore）。Ollama 只能本地版用。
 
 ---
 
@@ -52,9 +45,7 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 │   ├── plugin_kb.py           # 个人知识库插件（记忆的归档扩展）
 │   ├── plugin_vision.py       # 视觉识别插件（云端 VLM 桥接，可配置）
 │   └── data/                  # memory.db / kb.db / scheduler.db / watchers.db（gitignore，绝不提交）
-├── docs/                      # GitHub Pages 静态站源码
 ├── knowledge/                 # 专业知识库（辅助解牌）
-├── build_docs.py              # 把人设+知识打包给静态站
 └── README.md
 ```
 
@@ -113,7 +104,7 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 
 **元规则：牌不开口，人开口**——塔罗是主体；只在风险评估与急性危机时，才跳出塔罗师角色走安全流程。
 
-改了 `knowledge/` 或 `prompts/persona.zh.md` 后，运行 `python build_docs.py` 重新生成 `docs/persona.js` 与 `docs/knowledge.js`，提交推送即可更新在线版（Pages 几分钟后自动重建）。
+知识库改动即时生效——本地 Agent 每轮直接从 `knowledge/` 检索，无需重新构建。
 
 ---
 
@@ -132,7 +123,6 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 - **危机内容不进事实库**（遵守上面的边界规则）。
 - 说"忘掉刚才记的"即可撤销最近线索。
 - 点顶栏「记忆」打开面板：查看/固定/添加/删除线索、看抽牌历史、手动添加画像、整理去重、清空全部，还可一键开关记忆。
-- 静态网页版（GitHub Pages）无服务端，记忆功能只在本地版可用。
 
 ---
 
@@ -153,8 +143,6 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 - 在「设置 → 👁 视觉识别插件」里开启并填 base_url / model / api_key（预设已内置常见服务商）。密钥只存本机 `agent/data/plugins.json`（gitignore）。
 - 聊天框左侧「＋图」可附带最多 3 张图片。流程是：**云端 VLM 看图 → 生成客观中文描述 → 描述作为文字线索喂给主模型**。主模型始终是你配置的那个纯文本模型，它不会"假装看见"图片，只把描述当作你提供的线索。
 - 视觉 API 调用失败不会中断对话，会如实标注"图片识别失败"。
-
-> 两个插件都只在本地 Agent 生效；GitHub Pages 静态站无服务端，不含这两项。
 
 ---
 
