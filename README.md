@@ -48,9 +48,10 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 │   └── SKILL.md               # 技能格式（按需触发）
 ├── agent/                     # 本地网页 Agent（双后端 + 记忆 + 工具 + 插件）
 │   ├── llm.py / knowledge.py / memory.py / tools.py / server.py
+│   ├── scheduler.py / watchers.py  # L3 主动关怀 + 条件触发（纯 stdlib）
 │   ├── plugin_kb.py           # 个人知识库插件（记忆的归档扩展）
 │   ├── plugin_vision.py       # 视觉识别插件（云端 VLM 桥接，可配置）
-│   └── data/                  # memory.db / kb.db / scheduler.db（gitignore，绝不提交）
+│   └── data/                  # memory.db / kb.db / scheduler.db / watchers.db（gitignore，绝不提交）
 ├── docs/                      # GitHub Pages 静态站源码
 ├── knowledge/                 # 专业知识库（辅助解牌）
 ├── build_docs.py              # 把人设+知识打包给静态站
@@ -190,6 +191,22 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 - 点顶栏「关怀」配置任务、看收件箱、标记已读。默认**关闭**，需手动开启总开关。
 - 全部本地运行，不向任何外部发送消息。
 - **开机自启**：双击 `agent/autostart.bat`（或把它放进"启动"文件夹）即可让服务随登录启动，L3 才会持续生效；删掉启动项即撤销。
+
+### 盯事 · 条件触发（对标灵光 2.0 的"长事务托管"）
+
+定时关怀只会"到点问候"，条件触发才是真正"盯住一件事"——**读外部数据 → 规则判断 → 满足条件才提醒**（`agent/watchers.py`，纯 stdlib，**不调用模型**）：
+
+| 数据源 | 说明 |
+|---|---|
+| 网页 / 文本 | 抓取网页全文，配「包含 / 不含 / 正则」规则（如盯某页面出现"降价"） |
+| RSS / Atom | 订阅源，配「新条目」规则有新文章才提醒 |
+| JSON 接口 | 用字段路径取值（如 `current.temperature_2m`），配数值比较规则 |
+| 天气 | 内置常用城市坐标，Open-Meteo 免 key，配 `> / ≥ / < / ≤` 规则（如"低于 5°C 提醒加衣"） |
+
+- 规则：`contains` / `not_contains` / `regex` / `gt` / `gte` / `lt` / `lte` / `changed`（内容变化）/ `new_item`（新条目）/ `always`。
+- **冷却与去重**：每条盯事有"检查间隔"和"触发冷却"，避免反复打扰；首次检查只建立基线不误报。
+- 判定结果写入 `agent/data/watchers.db`（`watchers` + `watcher_events` 两张表，gitignore），命中才进收件箱 / 弹通知；抓取失败静默记录、不打扰。
+- 在「关怀」面板的「盯事 · 条件触发」区添加、启停、立即检查、清空日志。
 
 ---
 

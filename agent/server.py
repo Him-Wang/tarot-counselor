@@ -25,6 +25,7 @@ import knowledge
 import memory
 import tools
 import scheduler
+import watchers
 import plugin_kb
 import plugin_vision
 
@@ -172,6 +173,8 @@ class Handler(BaseHTTPRequestHandler):
                 "status": scheduler.status(),
                 "tasks": scheduler.list_tasks(),
                 "outbox": scheduler.list_outbox(),
+                "watchers": watchers.list_watchers(),
+                "watcher_events": watchers.list_events(limit=50),
             })
         elif p == "/api/plugins":
             self._send_json({
@@ -433,13 +436,25 @@ class Handler(BaseHTTPRequestHandler):
                 elif op == "add_event":
                     ok = scheduler.add_event(
                         str(body.get("kind", "manual")), str(body.get("payload", "")))
+                elif op == "add_watcher":
+                    watchers.add_watcher(body.get("watcher", {}))
+                    ok = True
+                elif op == "update_watcher":
+                    ok = watchers.update_watcher(int(body.get("id", 0)), body.get("watcher", {}))
+                elif op == "delete_watcher":
+                    ok = watchers.delete_watcher(int(body.get("id", 0)))
+                elif op == "clear_watcher_events":
+                    ok = watchers.clear_events()
                 elif op == "run_now":
                     fired = scheduler.run_due_tasks(load_config)
+                    fired = fired + scheduler.run_watcher_checks(force=True)
                     self._send_json({
                         "ok": True, "fired": fired,
                         "status": scheduler.status(),
                         "tasks": scheduler.list_tasks(),
                         "outbox": scheduler.list_outbox(),
+                        "watchers": watchers.list_watchers(),
+                        "watcher_events": watchers.list_events(limit=50),
                     })
                     return
                 else:
@@ -450,6 +465,8 @@ class Handler(BaseHTTPRequestHandler):
                     "status": scheduler.status(),
                     "tasks": scheduler.list_tasks(),
                     "outbox": scheduler.list_outbox(),
+                    "watchers": watchers.list_watchers(),
+                    "watcher_events": watchers.list_events(limit=50),
                 })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 500)

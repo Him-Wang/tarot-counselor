@@ -258,6 +258,59 @@
       <button id="careRunBtn">立即检查一次</button>
     </div>
 
+    <h3 style="font-size:14px;margin:16px 0 8px">盯事 · 条件触发 <span class="desc" style="font-weight:400">（盯住一件事，满足条件才提醒）</span></h3>
+    <p class="desc" style="margin:4px 0">不用模型，纯规则判断：定时抓取网页 / RSS / JSON 接口 / 天气，命中条件才写进收件箱。数据源失败不会打扰你。</p>
+    <div id="watcherList" class="mem-list" style="max-height:200px">加载中…</div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label>名称</label><input id="watchName" placeholder="北京天气"></div>
+      <div class="field"><label>提醒我（意图）</label><input id="watchIntent" placeholder="降温了记得加衣服"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>数据源</label>
+        <select id="watchSource" onchange="watchSourceHint()">
+          <option value="http">网页 / 文本</option>
+          <option value="rss">RSS / Atom 订阅</option>
+          <option value="json">JSON 接口</option>
+          <option value="weather">天气（无需 key）</option>
+        </select>
+      </div>
+      <div class="field"><label>规则</label>
+        <select id="watchRule">
+          <option value="contains">包含关键词</option>
+          <option value="not_contains">不含关键词</option>
+          <option value="regex">正则匹配</option>
+          <option value="gt">数值 &gt;</option>
+          <option value="gte">数值 ≥</option>
+          <option value="lt">数值 &lt;</option>
+          <option value="lte">数值 ≤</option>
+          <option value="changed">内容变化</option>
+          <option value="new_item">新条目（RSS）</option>
+          <option value="always">每次都触发</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label id="watchUrlLabel">网址</label><input id="watchUrl" placeholder="https://example.com/news"></div>
+    <div class="row">
+      <div class="field"><label>关键词 / 正则</label><input id="watchKeyword" placeholder="涨价"></div>
+      <div class="field"><label>数值阈值</label><input id="watchThreshold" placeholder="例如 10"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>城市（天气源）</label><input id="watchCity" placeholder="北京"></div>
+      <div class="field"><label>字段路径（JSON 源）</label><input id="watchField" placeholder="current.temperature_2m"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>检查间隔（分钟）</label><input id="watchInterval" placeholder="60"></div>
+      <div class="field"><label>触发冷却（分钟）</label><input id="watchCooldown" placeholder="60"></div>
+    </div>
+    <p class="desc" id="watchHint" style="margin:6px 0"></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="watchAddBtn">＋ 添加盯事</button>
+      <button id="watchCheckBtn">立即检查</button>
+      <button id="watchClearLogBtn">清空日志</button>
+    </div>
+    <h4 style="font-size:13px;margin:14px 0 6px;color:var(--muted)">最近判定</h4>
+    <div id="watchLog" class="mem-list" style="max-height:160px">加载中…</div>
+
     <h3 style="font-size:14px;margin:16px 0 8px">收件箱 <span id="careUnread" class="care-badge" hidden>0</span></h3>
     <div id="outboxList" class="mem-list" style="max-height:200px">加载中…</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -534,7 +587,7 @@ async function loadCare(silent){
   const unread = s.unread||0;
   $('careBadge').hidden = unread===0; $('careBadge').textContent = unread;
   $('careUnread').hidden = unread===0; $('careUnread').textContent = unread;
-  renderTasks(); renderOutbox();
+  renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
   if(!silent) $('careStatus').className='status';
 }
 function renderTasks(){
@@ -578,7 +631,85 @@ function renderOutbox(){
     row.appendChild(tdiv); row.appendChild(cdiv); row.appendChild(acts); list.appendChild(row);
   });
 }
-$('careBtn').onclick = () => { $('careOverlay').classList.add('show'); loadCare(); };
+// ---------- 盯事 · 条件触发 ----------
+const WATCH_SOURCE_LABEL = {http:'网页/文本', rss:'RSS', json:'JSON', weather:'天气'};
+const WATCH_RULE_LABEL = {contains:'包含',not_contains:'不含',regex:'正则',gt:'>',gte:'≥',lt:'<',lte:'≤',changed:'有变化',new_item:'新条目',always:'每次'};
+function watchSourceHint(){
+  const s=$('watchSource').value;
+  const hints={http:'抓取整个网页文本，配合「包含/不含/正则」规则最常用。',
+    rss:'订阅源地址；用「新条目」规则可在有新文章时提醒。',
+    json:'接口返回的 JSON，用字段路径取值，如 current.temperature_2m。',
+    weather:'填城市名即可，无需 API key；用数值规则判断温度，如 < 5。'};
+  $('watchHint').textContent=hints[s]||'';
+  $('watchUrlLabel').textContent = (s==='weather') ? '城市（也可填自定义接口）' : '网址';
+}
+function renderWatchers(){
+  const list=$('watcherList'); if(!list) return; list.innerHTML='';
+  const ws=(careData&&careData.watchers)||[];
+  if(!ws.length){ list.innerHTML='<div class="mem-empty">还没有盯事任务。比如盯北京气温，低于 5°C 时提醒加衣。</div>'; return; }
+  ws.forEach(w=>{
+    const row=document.createElement('div'); row.className='care-row';
+    const tdiv=document.createElement('div'); tdiv.className='t';
+    tdiv.textContent=(w.enabled?'':'[停用] ')+w.name+'　<span style="color:var(--muted);font-weight:400">'+WATCH_SOURCE_LABEL[w.source_type]+' · '+WATCH_RULE_LABEL[w.rule]+(w.keyword?'「'+w.keyword+'」':'')+(w.rule.indexOf('t')===0||w.rule==='gte'||w.rule==='lte'?' '+w.threshold:'')+'</span>';
+    const sdiv=document.createElement('div'); sdiv.className='s';
+    sdiv.textContent='提醒：'+w.intent+'　间隔 '+w.interval_min+' 分 / 冷却 '+w.cooldown_min+' 分'+(w.last_fire?'　上次触发：'+w.last_fire:(w.last_check?'　上次检查：'+w.last_check:'　尚未检查'));
+    const acts=document.createElement('div'); acts.style.cssText='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap';
+    const mkBtn=(label,op,extra)=>{ const b=document.createElement('button'); b.textContent=label;
+      b.onclick=async()=>{ await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(Object.assign({op,id:w.id},extra||{}))}); await loadCare(true); }; return b; };
+    acts.appendChild(mkBtn(w.enabled?'停用':'启用','update_watcher',{watcher:{enabled:!w.enabled}}));
+    acts.appendChild(mkBtn('删除','delete_watcher'));
+    row.appendChild(tdiv); row.appendChild(sdiv); row.appendChild(acts); list.appendChild(row);
+  });
+}
+function renderWatchLog(){
+  const box=$('watchLog'); if(!box) return; box.innerHTML='';
+  const ev=(careData&&careData.watcher_events)||[];
+  if(!ev.length){ box.innerHTML='<div class="mem-empty">尚无判定记录。点「立即检查」试一次。</div>'; return; }
+  ev.forEach(e=>{
+    const row=document.createElement('div'); row.className='care-row';
+    const tdiv=document.createElement('div'); tdiv.className='t';
+    tdiv.textContent=(e.fired?'● 命中':'○ 未命中')+'　'+e.name+'　'+e.created_at;
+    const sdiv=document.createElement('div'); sdiv.className='s'; sdiv.textContent=e.summary||'（无摘要）';
+    row.appendChild(tdiv); row.appendChild(sdiv); box.appendChild(row);
+  });
+}
+$('watchSource') && ($('watchSource').onchange=watchSourceHint);
+$('watchAddBtn').onclick = async () => {
+  const watcher={
+    name:$('watchName').value.trim()||'我的关注',
+    intent:$('watchIntent').value.trim()||'有变化时提醒我',
+    source_type:$('watchSource').value, rule:$('watchRule').value,
+    url:$('watchUrl').value.trim(), keyword:$('watchKeyword').value.trim(),
+    threshold:parseFloat($('watchThreshold').value)||0,
+    city:$('watchCity').value.trim(), field_path:$('watchField').value.trim(),
+    interval_min:parseInt($('watchInterval').value)||60,
+    cooldown_min:$('watchCooldown').value||0
+  };
+  if(watcher.source_type!=='weather' && !watcher.url){ alert('请填写数据源网址'); return; }
+  const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'add_watcher',watcher})});
+  const d=await r.json();
+  if(d.ok){ ['watchName','watchIntent','watchUrl','watchKeyword','watchThreshold','watchCity','watchField'].forEach(id=>$(id).value=''); }
+  await loadCare(true);
+  $('careStatus').className=d.ok?'status ok':'status'; $('careStatus').textContent=d.ok?'盯事任务已添加':'添加失败：'+(d.error||'');
+};
+$('watchCheckBtn').onclick = async () => {
+  $('careStatus').className='status'; $('careStatus').textContent='检查中（可能抓取网络，稍候）…';
+  const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'run_now'})});
+  const d=await r.json(); careData=d; renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
+  const wf=(d.fired||[]).filter(f=>f.watcher_id);
+  $('careStatus').className='status ok';
+  $('careStatus').textContent='盯事命中 '+wf.length+' 条'+(wf.length?'，已写入收件箱':'（本次均未满足条件）');
+};
+$('watchClearLogBtn').onclick = async () => {
+  await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'clear_watcher_events'})});
+  await loadCare(true);
+  $('careStatus').className='status ok'; $('careStatus').textContent='判定日志已清空';
+};
+$('careBtn').onclick = () => { $('careOverlay').classList.add('show'); loadCare(); watchSourceHint(); };
 $('careCloseBtn').onclick = () => { $('careOverlay').classList.remove('show'); };
 $('careMaster').onchange = async e => {
   await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},

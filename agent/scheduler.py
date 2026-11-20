@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 
 import llm
 import memory
+import watchers
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -387,6 +388,82 @@ def run_due_tasks(cfg_loader):
     return fired
 
 
+def run_watcher_checks(force=False):
+    """Evaluate condition watchers: fetch sources, test rules, deliver on hit.
+
+    Pure-Python by design (no model call), so it works even when the local
+    model is unavailable.  A watcher firing inserts a message into the SAME
+    outbox as timed tasks and optionally fires the same desktop toast.
+    `force=True` ignores interval/cooldown (used by the UI "check now" button).
+    """
+    settings = get_settings()
+    if settings.get("master", "0") not in ("1", "True", "true"):
+        return []
+    if _in_quiet_hours() and not force:
+        return []
+
+    now = _now()
+    fired = []
+    rows = watchers.list_watchers()
+    for row in rows:
+        w = dict(row)
+        if not w.get("enabled"):
+            continue
+        if not force and not watchers.is_due(w, now):
+            continue
+        if not force and not watchers._cooldown_ok(w, now):
+            continue
+
+        summary = ""
+        hit = False
+        fp = ""
+        try:
+            value_text, numeric, items, _ = watchers.fetch(w)
+            hit, summary, fp = watchers.evaluate(w, value_text, numeric, items)
+        except Exception as e:
+            summary = "抓取/判断失败：%s" % e
+            hit = False
+            fp = str(w.get("last_value", "") or "")
+
+        # Persist the observation in the watchers' OWN db (not scheduler.db).
+        wconn = watchers._conn()
+        try:
+            wconn.execute(
+                "UPDATE watchers SET last_check=?, last_value=? WHERE id=?",
+                (_now_s(), fp[:500], w["id"]))
+            wconn.commit()
+        finally:
+            wconn.close()
+
+        if not hit:
+            if force:
+                watchers.log_event(w, False, summary, "")
+            continue
+
+        message = watchers.build_message(w, summary)
+        # Message goes into scheduler's outbox; last_fire into watchers' db.
+        conn = _conn()
+        try:
+            conn.execute(
+                "INSERT INTO messages(task_id,role,content,read,created_at) "
+                "VALUES(?,?,?,0,?)", (None, "assistant", message, _now_s()))
+            conn.commit()
+        finally:
+            conn.close()
+        wconn = watchers._conn()
+        try:
+            wconn.execute("UPDATE watchers SET last_fire=? WHERE id=?", (_now_s(), w["id"]))
+            wconn.commit()
+        finally:
+            wconn.close()
+        watchers.log_event(w, True, summary, message)
+        if w.get("toast"):
+            _fire_toast("Olivia · " + w.get("name", "关注"), message)
+        fired.append({"watcher_id": w["id"], "name": w.get("name"),
+                      "summary": summary, "content": message})
+    return fired
+
+
 def load_persona_short():
     path = os.path.join(os.path.dirname(BASE_DIR), "prompts", "persona.zh.md")
     try:
@@ -416,6 +493,10 @@ def start(cfg_loader):
                 run_due_tasks(cfg_loader)
             except Exception:
                 pass
+            try:
+                run_watcher_checks()
+            except Exception:
+                pass
     _thread = threading.Thread(target=loop, name="olivia-scheduler", daemon=True)
     _thread.start()
     return _thread
@@ -433,6 +514,7 @@ def status():
         "quiet_end": s.get("quiet_end", "08:00"),
         "in_quiet_hours": _in_quiet_hours(),
         "task_count": len(list_tasks()),
+        "watcher_count": len([w for w in watchers.list_watchers() if w.get("enabled")]),
         "unread": len(list_outbox(unread_only=True)),
         "thread_alive": bool(_thread and _thread.is_alive()),
     }
