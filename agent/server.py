@@ -132,6 +132,19 @@ def mask(cfg):
     return out
 
 
+def _effective_api_key(cfg, supplied):
+    """Return the key to actually use; ignore masked display placeholders.
+
+    mask() renders short keys as '****' and long keys as 'abxxxx...wxyz'.
+    Neither string is a real key and neither may be sent to the provider.
+    """
+    if not isinstance(supplied, str) or not supplied:
+        return cfg.get("api_key", "")
+    if supplied in ("****", "***") or "\u2026" in supplied:
+        return cfg.get("api_key", "")
+    return supplied
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # quiet
@@ -168,9 +181,15 @@ class Handler(BaseHTTPRequestHandler):
     def _body(self):
         try:
             n = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            return {}
+        if n < 0 or n > 10 * 1024 * 1024:  # m9: reject oversized bodies (10 MB cap)
+            return {}
+        try:
             return json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
         except Exception:
             return {}
+
 
     def do_GET(self):
         p = self.path.split("?")[0]
@@ -238,17 +257,22 @@ class Handler(BaseHTTPRequestHandler):
                       "think", "tools_enabled", "memory_enabled", "prophecy_enabled"):
                 if k in body:
                     cfg[k] = body[k]
-            # don't overwrite a saved key with the masked display string
-            if isinstance(body.get("api_key"), str) and "…" in body["api_key"]:
+            # M1: never overwrite a saved key with a masked display string.
+            # mask() returns "****" for short keys (len<=10) and "xxxx…yyyy"
+            # for long ones; both are placeholders, not real keys.
+            supplied_key = body.get("api_key")
+            if isinstance(supplied_key, str) and (
+                supplied_key in ("****", "***") or "…" in supplied_key
+            ):
                 cfg["api_key"] = load_config().get("api_key", "")
             save_config(cfg)
             self._send_json({"ok": True, "config": mask(cfg)})
 
         elif p == "/api/test":
             cfg = load_config()
-            # allow testing with a key supplied inline in this request
-            if body.get("api_key"):
-                cfg["api_key"] = body["api_key"]
+            # allow testing with a real key supplied inline in this request;
+            # ignore masked placeholders so they are never sent as a real key
+            cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
             try:
                 reply = llm.check(cfg)
                 self._send_json({"ok": True, "reply": reply})
@@ -260,8 +284,7 @@ class Handler(BaseHTTPRequestHandler):
             history = body.get("history", [])
             images = body.get("images", [])  # list of data URLs from the UI
             cfg = load_config()
-            if body.get("api_key"):
-                cfg["api_key"] = body["api_key"]
+            cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
 
             # ---- vision bridge: cloud VLM describes images, feed text to main model ----
             vision_ctx = ""
@@ -273,7 +296,10 @@ class Handler(BaseHTTPRequestHandler):
                         if desc:
                             vision_ctx += plugin_vision.build_context(desc, message) + "\n"
                     except Exception as ve:
-                        vision_ctx += "【图片识别失败：%s】\n" % ve
+                        # m10: log the detail locally; never leak paths/URLs/keys
+                        # into the system prompt or the reply stream.
+                        print("[vision] describe_image failed: %s" % ve)
+                        vision_ctx += "【图片识别失败，已略过图片内容】\n"
 
             # explicit "forget" command -> handled locally, streamed as a reply
             import re as _re
@@ -320,7 +346,12 @@ class Handler(BaseHTTPRequestHandler):
                 system += "\n\n---\n" + tools.TOOL_GUIDE
             msgs = [{"role": "system", "content": system}]
             for h in history[-20:]:
-                msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+                # m11: only real conversation roles are allowed in; a client
+                # must not be able to inject a system message via history.
+                role = h.get("role", "user")
+                if role not in ("user", "assistant"):
+                    role = "user"
+                msgs.append({"role": role, "content": str(h.get("content", ""))})
             msgs.append({"role": "user", "content": message})
 
             self.send_response(200)
@@ -336,6 +367,9 @@ class Handler(BaseHTTPRequestHandler):
 
                 emit({"meta": used})
                 full = []
+                # M2: keep the structured draw_cards result for this turn, so
+                # draw history records exactly the cards that were drawn.
+                turn_draw = None
                 if preset_reply is not None:
                     full.append(preset_reply)
                     emit({"token": preset_reply})
@@ -370,6 +404,7 @@ class Handler(BaseHTTPRequestHandler):
                             result = tools.execute(name, args)
                             emit({"tool": tools.summary(name, result)})
                             if name == "draw_cards" and result.get("ok"):
+                                turn_draw = result
                                 # 把牌面单独推给前端，用于渲染牌图和牌位列表
                                 emit({"cards": {
                                     "spread": result.get("spread", ""),
@@ -408,7 +443,7 @@ class Handler(BaseHTTPRequestHandler):
                 # persist this turn (rule-based extraction, ~0 ms) after stream
                 if cfg.get("memory_enabled", True) and full and preset_reply is None:
                     try:
-                        memory.remember(message, "".join(full))
+                        memory.remember(message, "".join(full), draw=turn_draw)
                     except Exception:
                         pass
             except Exception as e:

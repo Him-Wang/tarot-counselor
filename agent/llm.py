@@ -172,8 +172,14 @@ def stream_chat_events(messages, cfg, tools=None):
             if text:
                 content_parts.append(text)
                 yield {"type": "token", "text": text}
+            tool_call_seq = 0
             for tc in (delta.get("tool_calls") or []):
-                idx = tc.get("index", 0)
+                # m3: some providers omit "index"; use a positional counter so
+                # parallel tool calls don't collapse into one merged slot.
+                idx = tc.get("index")
+                if idx is None:
+                    idx = tool_call_seq
+                tool_call_seq += 1
                 slot = calls_by_index.setdefault(
                     idx, {"id": "", "name": "", "arguments": ""})
                 if tc.get("id"):
@@ -218,8 +224,8 @@ def complete(messages, cfg):
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers=headers, method="POST")
     try:
-        resp = urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 120)))
-        obj = json.loads(resp.read().decode("utf-8", "replace"))
+        with urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 120))) as resp:
+            obj = json.loads(resp.read().decode("utf-8", "replace"))
         msg = obj["choices"][0].get("message", {})
         return (msg.get("content") or "")
     except urllib.error.HTTPError as e:
@@ -247,8 +253,8 @@ def check(cfg):
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers=headers, method="POST")
     try:
-        resp = urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 60)))
-        obj = json.loads(resp.read().decode("utf-8", "replace"))
+        with urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 60))) as resp:
+            obj = json.loads(resp.read().decode("utf-8", "replace"))
         return obj["choices"][0]["message"]["content"]
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")[:500]

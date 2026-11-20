@@ -191,7 +191,9 @@ def search_notes(query, top_k=3, max_chars=4000):
             c = text.count(t)
             if c:
                 score += c * (2 if len(t) >= 2 else 1)
-        if (r["title"] or "").lower() in q or q in (r["title"] or "").lower():
+        title = (r["title"] or "").lower()
+        # m6: an empty title must not match every query ("" is in every q)
+        if title and (title in q or q in title):
             score += 5
         score += (r["pinned"] or 0) * 2
         if score:

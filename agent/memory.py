@@ -168,28 +168,29 @@ def _extract(text):
     return facts, profile, sensitive
 
 
-def _store_draw(conn, reply, question, now):
-    text = reply or ""
-    spread = "未注明"
-    if "凯尔特" in text:
-        spread = "凯尔特十字"
-    elif "三张" in text or ("过去" in text and "未来" in text):
-        spread = "三张"
-    elif "单张" in text:
-        spread = "单张"
+def _store_draw(conn, draw, question, now):
+    """Persist a draw from the STRUCTURED draw_cards tool result.
 
+    M2: this used to parse card names out of the assistant's free-text reply,
+    which created phantom records (e.g. "塔" matching inside "塔罗牌"). Only
+    cards actually drawn by the draw_cards tool are real draws.
+    """
+    if not isinstance(draw, dict) or not draw.get("ok"):
+        return
+    items = draw.get("cards") or []
+    if not items:
+        return
+    spread = draw.get("spread") or "未注明"
     found = []
-    seen = set()
-    for name in CARD_NAMES:
-        idx = text.find(name)
-        if idx < 0 or name in seen:
+    for c in items[:12]:
+        name = str(c.get("name", "")).strip()
+        if not name:
             continue
-        window = text[idx:idx + len(name) + 8]
-        reversed_ = "逆位" in window
-        found.append({"name": name, "reversed": reversed_})
-        seen.add(name)
-        if len(found) >= 12:
-            break
+        orientation = str(c.get("orientation", ""))
+        found.append({
+            "name": name,
+            "reversed": ("逆" in orientation) or bool(c.get("reversed")),
+        })
     if not found:
         return
     conn.execute(
@@ -228,8 +229,13 @@ def add_fact(kind, text, pinned=False):
         conn.close()
 
 
-def remember(user_msg, reply):
-    """Persist one turn: raw messages, extracted facts, profile, draw record."""
+def remember(user_msg, reply, draw=None):
+    """Persist one turn: raw messages, extracted facts, profile, draw record.
+
+    ``draw`` is the structured result of the draw_cards tool (or None).
+    Draw history is only written from this structured result, never by
+    scanning the assistant's free-text reply for card names.
+    """
     init_db()
     conn = _conn()
     now = _now()
@@ -271,7 +277,7 @@ def remember(user_msg, reply):
                     "VALUES(?,?,?,?,?,0,?,?)",
                     (kind, n, text, "", pinned, now, now),
                 )
-        _store_draw(conn, reply, user_msg, now)
+        _store_draw(conn, draw, user_msg, now)
         conn.commit()
     finally:
         conn.close()
@@ -454,7 +460,18 @@ def forget(text):
 
 
 def forget_recent(n=3):
-    """Undo the last n extracted facts (used by 'forget what I just said')."""
+    """Undo the last n extracted facts (used by 'forget what I just said').
+
+    M3: clamp n to a non-negative integer — SQLite treats LIMIT -1 as
+    "unlimited", so a negative n used to delete every stored fact.
+    """
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = 3
+    n = max(0, n)
+    if not n:
+        return 0
     init_db()
     conn = _conn()
     try:

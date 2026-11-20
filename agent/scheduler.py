@@ -286,13 +286,16 @@ def _is_due(task, now):
             target = datetime.strptime(task["run_at"], "%Y-%m-%d %H:%M")
         except Exception:
             return False
-        return now >= target and (last_dt is None or last_dt.date() < now.date())
+        # M4: a "once" task must fire exactly once, ever — not once per day.
+        return now >= target and last_dt is None
     if kind == "daily":
         hh, mm = (task["cron_time"] or "09:00").split(":")
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         if now < target:
             return False
-        return last_dt is None or last_dt.date() < now.date()
+        # m1: compare against the scheduled time, not just the calendar day,
+        # so a manual run at 08:00 doesn't suppress the 09:00 fire.
+        return last_dt is None or last_dt < target
     if kind == "weekly":
         if now.weekday() != int(task["weekday"]):
             return False
@@ -300,7 +303,7 @@ def _is_due(task, now):
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         if now < target:
             return False
-        return last_dt is None or last_dt.date() < now.date()
+        return last_dt is None or last_dt < target
     if kind == "interval":
         mins = max(1, int(task["interval_min"] or 120))
         if last_dt is None:

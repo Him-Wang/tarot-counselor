@@ -30,8 +30,11 @@ Rules
 import json
 import os
 import re
+import socket
 import sqlite3
+import ipaddress
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -229,9 +232,28 @@ def clear_events():
 
 # ---------- fetching ----------
 
+def _assert_public_url(url):
+    """m8: block SSRF — a watcher URL must not target localhost/private nets."""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("需要有效的 http(s) 地址")
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror:
+        raise ValueError("无法解析地址")
+    for family, _typ, _proto, _canon, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved \
+                or ip.is_multicast or ip.is_unspecified:
+            raise ValueError("不允许访问内网地址")
+    return url
+
+
 def _get_text(url, timeout=20):
     if not url or not str(url).lower().startswith(("http://", "https://")):
         raise ValueError("需要有效的 http(s) 地址")
+    _assert_public_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": DEFAULT_UA,
                                                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -277,7 +299,14 @@ def _dig(obj, path):
                 raise KeyError(part)
             cur = cur[part]
         elif isinstance(cur, list):
-            idx = int(part)
+            # m7: reject negative or out-of-range indices instead of silently
+            # returning the last element or raising an unhandled IndexError.
+            try:
+                idx = int(part)
+            except (TypeError, ValueError):
+                raise KeyError(part)
+            if idx < 0 or idx >= len(cur):
+                raise IndexError(part)
             cur = cur[idx]
         else:
             raise KeyError(part)

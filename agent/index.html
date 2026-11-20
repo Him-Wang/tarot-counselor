@@ -31,7 +31,7 @@
   button:hover{border-color:var(--accent);background:#2e2842}
   button:disabled{opacity:.5;cursor:not-allowed}
   .chip{font-size:12px;padding:5px 10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
-  .prophecy-chip{display:none;font-size:11px;padding:4px 9px;color:#ffcf6b;
+  .prophecy-chip{display:none;font-size:12px;padding:4px 9px;color:#ffcf6b;
     background:rgba(255,190,70,.12);border:1px solid rgba(255,190,70,.4);border-radius:20px;white-space:nowrap;flex-shrink:0}
   .prophecy-chip.on{display:inline-block}
 
@@ -41,16 +41,18 @@
   .msg .bub{background:var(--panel);border:1px solid var(--line);padding:11px 15px;border-radius:var(--radius);white-space:pre-wrap;word-break:break-word}
   .msg.user .bub{background:linear-gradient(135deg,#5a3d86,#3c2c5e);border-color:#6b4a9c}
   .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
-  .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
+  .meta-line{font-size:12px;color:var(--accent2);opacity:.8}
   .tool-badge{display:inline-block;font-size:12px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
   /* ---- 抽牌结果：按牌阵真实几何摆位 + 悬停看牌位名 ---- */
   .draw-wrap{margin:2px 0 12px;text-align:center}
   .draw-head{font-size:12px;color:#c9b6ef;margin:0 0 9px;text-align:left}
   .draw-head b{color:#efe6ff;font-weight:600}
   .draw-head span{display:block;margin-top:3px;color:#a99ac9;line-height:1.5}
-  .draw-scroll{display:flex;justify-content:center;padding:2px 0 6px}
-  .draw-board{--cw:86px;--gs:1;display:grid;row-gap:calc(var(--gy,9px) * var(--gs));column-gap:calc(var(--gx,8px) * var(--gs));justify-items:center;align-items:start;margin:0;width:max-content;max-width:100%}
-  .draw-board.wide{--cw:60px;--gy:12px;--gx:16px}
+  .draw-scroll{display:flex;justify-content:flex-start;padding:2px 0 8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:rgba(160,120,220,.45) transparent}
+  .draw-scroll::-webkit-scrollbar{height:6px}
+  .draw-scroll::-webkit-scrollbar-thumb{background:rgba(160,120,220,.45);border-radius:3px}
+  .draw-board{--cw:86px;--gs:1;display:grid;row-gap:calc(var(--gy,14px) * var(--gs));column-gap:calc(var(--gx,12px) * var(--gs));justify-items:center;align-items:start;margin:0 auto;width:max-content;max-width:none}
+  .draw-board.wide{--cw:60px;--gy:16px;--gx:18px}
   .draw-slot{width:var(--cw);display:flex;flex-direction:column;gap:4px;align-items:center;position:relative;outline:0}
   .draw-slot .facebox{position:relative;width:100%;aspect-ratio:420/727}
   .draw-slot .face{position:absolute;inset:0;border-radius:8px;overflow:hidden;background:rgba(120,90,170,.12);border:1px solid rgba(150,115,205,.3);box-shadow:0 3px 10px rgba(0,0,0,.35);transition:border-color .14s}
@@ -58,7 +60,8 @@
   .draw-slot:hover .face,.draw-slot:focus-within .face,.draw-slot.open .face{border-color:rgba(200,165,255,.62)}
   .draw-slot .face img{width:100%;height:100%;object-fit:cover;display:block}
   .draw-slot .face.rev img{transform:rotate(180deg)}
-  .draw-slot .face.rot{inset:auto;left:50%;top:50%;width:calc(var(--cw) * .70);height:calc(var(--cw) * 1.18);transform:translate(-50%,-50%) rotate(90deg)}
+  /* 横躺那张：整张牌转 90°，尺寸仍是正常一张牌，只是占位变成宽比高 */
+  .draw-slot .face.rot{inset:auto;left:50%;top:50%;width:var(--cw);height:calc(var(--cw) * 1.7309);transform:translate(-50%,-50%) rotate(90deg);box-shadow:0 5px 16px rgba(0,0,0,.55)}
   .draw-slot .num{position:absolute;top:4px;left:4px;z-index:3;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:rgba(16,10,28,.86);border:1px solid rgba(190,160,255,.5);color:#f0e8ff;font-size:12px;line-height:17px;text-align:center;font-weight:600;box-sizing:border-box}
   /* 牌位名浮窗：从牌的一侧浮出来，不压在牌面上 */
   .draw-slot .poslay{position:absolute;top:0;left:calc(100% + 8px);z-index:8;width:178px;max-width:min(178px, 58vw);padding:7px 9px;border-radius:9px;background:rgba(18,12,30,.97);border:1px solid rgba(150,115,205,.42);box-shadow:0 8px 22px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateX(-4px);transition:opacity .14s,transform .14s,visibility .14s;pointer-events:none;text-align:left}
@@ -69,32 +72,35 @@
   .draw-slot .poslay b{display:block;font-size:12px;color:#f2ebff;line-height:1.35;font-weight:600;word-break:break-word}
   .draw-slot .poslay span{display:block;font-size:12px;color:#cbbfe6;line-height:1.5;margin-top:3px;word-break:break-word}
   .draw-slot .poslay .cd{margin-top:4px;padding-top:4px;border-top:1px solid rgba(150,115,205,.28);color:#e4d9f7}
-  .draw-slot .tip{font-size:12px;color:#d9cdf2;text-align:center;line-height:1.3;width:100%;word-break:keep-all;overflow-wrap:anywhere}
-  .draw-slot .tip .nm{display:block;color:#e4d9f7}
-  .draw-slot .tip .or{display:block;font-size:12px;color:#a99ac9;margin-top:1px}
+  .draw-slot .tip{font-size:12px;color:#d9cdf2;text-align:center;line-height:1.3;width:100%;word-break:keep-all;overflow-wrap:anywhere;display:flex;flex-direction:column;align-items:center}
+  .draw-slot .tip .nm{display:block;color:#e4d9f7;white-space:nowrap}
+  .draw-slot .tip .or{display:block;font-size:12px;color:#a99ac9;margin-top:1px;white-space:nowrap}
   .draw-slot .tip .or.rev{color:#ffb4c8}
   .draw-slot .tip .rev-tag{color:#ffb4c8}
   /* 横躺的那一张（凯尔特十字的「阻碍」）：宽高对调，压在中心牌上 */
   .draw-slot.cross{z-index:6;width:auto;flex-direction:row;align-self:center;justify-self:center}
-  .draw-slot.cross .facebox{width:calc(var(--cw) * 1.18);height:calc(var(--cw) * .96);aspect-ratio:auto;flex:0 0 auto}
+  .draw-slot.cross .facebox{width:calc(var(--cw) * 1.7309);height:var(--cw);aspect-ratio:auto;flex:0 0 auto;overflow:visible}
   .draw-slot.cross .tip{display:none}
   .draw-slot.cross .face{border-color:rgba(216,170,255,.6);box-shadow:0 6px 18px rgba(0,0,0,.6)}
   .draw-slot.cross .num{top:3px;left:3px}
-  .draw-legend{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;gap:4px;text-align:left}
+  .draw-legend{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;grid-template-columns:minmax(0, 1fr);gap:4px;text-align:left;min-width:0;max-width:100%}
   .draw-legend summary{display:block;padding:7px 0;font-size:12px;color:#bfaee2;cursor:pointer;outline:0;list-style:none}
   .draw-legend summary::-webkit-details-marker{display:none}
   .draw-legend summary::before{content:"\25B8\00A0\00A0";color:#8e78b8}
   .draw-legend[open] summary::before{content:"\25BE\00A0\00A0"}
   .draw-legend summary:hover{color:#efe6ff}
-  .draw-legend .lg{font-size:12px;color:#a99ac9;line-height:1.55;display:flex;gap:7px;margin-top:5px}
+  .draw-legend .lg{font-size:12px;color:#a99ac9;line-height:1.55;display:flex;gap:7px;margin-top:5px;min-width:0}
   .draw-legend .lg i{color:#8e78b8;font-style:normal;min-width:16px;text-align:right;flex:0 0 auto}
   .draw-legend .lg span{color:#c8bce4;flex:1 1 auto;min-width:0;word-break:break-word;overflow-wrap:anywhere}
   .draw-legend .lg b{color:#e6dcfa;font-weight:600}
-  @media (max-width:900px){ .draw-board{--cw:74px;--gs:.92} .draw-board.wide{--cw:52px;--gs:.8} .draw-slot .poslay{width:158px} }
-  @media (max-width:760px){ .draw-board{--cw:62px;--gs:.72} .draw-board.wide{--cw:44px;--gs:.62} .draw-slot .poslay{width:142px} }
-  @media (max-width:520px){ .draw-board{--cw:54px;--gs:.5} .draw-board.wide{--cw:40px;--gs:.42} .draw-slot .poslay{width:154px;max-width:min(154px, 62vw);padding:6px 8px} }
+  @media (max-width:900px){ .draw-board{--cw:72px;--gs:.9} .draw-board.wide{--cw:52px;--gs:.78} .draw-slot .poslay{width:158px} }
+  @media (max-width:760px){ .draw-board{--cw:60px;--gs:.72} .draw-board.wide{--cw:44px;--gs:.6} .draw-slot .poslay{width:142px} }
+  @media (max-width:520px){ .draw-board{--cw:52px;--gs:.48} .draw-board.wide{--cw:38px;--gs:.4} .draw-slot .poslay{width:154px;max-width:min(154px, 62vw);padding:6px 8px} }
 
   .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:12px;background:var(--badge);color:#fff;font-size:12px;line-height:18px;text-align:center}
+  /* author display:inline-block otherwise overrides the UA [hidden] rule (M-1) */
+  .care-badge[hidden]{display:none}
+  .when-inline{color:var(--muted);font-weight:400;font-size:12px}
   .care-row{padding:9px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
   .care-row .t{font-size:13px;font-weight:600}
   .care-row .s{font-size:11px;color:var(--muted);margin-top:3px}
@@ -133,8 +139,8 @@
   .mem-list{max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
   .mem-item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:flex-start}
   .mem-item .grow{flex:1;word-break:break-word}
-  .mem-item .tag{font-size:10px;color:var(--accent2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-right:6px}
-  .mem-item .when{font-size:10px;color:var(--muted);display:block;margin-top:3px}
+  .mem-item .tag{font-size:12px;color:var(--accent2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-right:6px}
+  .mem-item .when{font-size:12px;color:var(--muted);display:block;margin-top:3px}
   .mem-item button{padding:3px 9px;font-size:11px}
   .mem-empty{color:var(--muted);font-size:13px;padding:18px;text-align:center}
   .switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:12px}
@@ -172,9 +178,9 @@
   </div>
 </div>
 
-<div class="overlay" id="overlay">
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="title-overlay">
   <div class="sheet">
-    <h2>接入设置</h2>
+    <h2 id="title-overlay">接入设置</h2>
     <p class="desc">选择后端并填入你自己的 API key。密钥只保存在本机 <code>agent/config.json</code>，不会上传。</p>
 
     <div class="field">
@@ -241,9 +247,9 @@
   </div>
 </div>
 
-<div class="overlay" id="memOverlay">
+<div class="overlay" id="memOverlay" role="dialog" aria-modal="true" aria-labelledby="title-memOverlay">
   <div class="sheet">
-    <h2>记忆管理</h2>
+    <h2 id="title-memOverlay">记忆管理</h2>
     <p class="desc">Olivia 记住的关于你的信息只存在本机 <code>agent/data/memory.db</code>。你可以在这里查看、固定、删除或全部清空。</p>
     <label class="switch"><input type="checkbox" id="memEnabled"> 启用长期记忆</label>
     <div class="mem-tabs">
@@ -263,9 +269,9 @@
   </div>
 </div>
 
-<div class="overlay" id="kbOverlay">
+<div class="overlay" id="kbOverlay" role="dialog" aria-modal="true" aria-labelledby="title-kbOverlay">
   <div class="sheet">
-    <h2>个人知识库 · 归档</h2>
+    <h2 id="title-kbOverlay">个人知识库 · 归档</h2>
     <p class="desc">长期保存重要笔记、清单与决定，本机 <code>agent/data/kb.db</code>。聊天里说"记到知识库"会自动归档，也能在这里手动管理；Olivia 会在相关时自然引用。</p>
     <div class="mem-list" id="kbList">加载中…</div>
     <div class="row" style="margin-top:12px">
@@ -283,9 +289,9 @@
   </div>
 </div>
 
-<div class="overlay" id="careOverlay">
+<div class="overlay" id="careOverlay" role="dialog" aria-modal="true" aria-labelledby="title-careOverlay">
   <div class="sheet">
-    <h2>主动关怀 · Always-on</h2>
+    <h2 id="title-careOverlay">主动关怀 · Always-on</h2>
     <p class="desc">让 Olivia 在后台定时主动关心你。到点后它会结合记忆写一条消息，存进收件箱并弹桌面通知。只在本机运行，静默时段不打扰。</p>
     <label class="switch"><input type="checkbox" id="careMaster"> 启用主动关怀（总开关）</label>
     <div class="row">
@@ -309,7 +315,15 @@
           <option value="once">仅一次</option>
         </select>
       </div>
-      <div class="field"><label>时间 / 间隔</label><input id="taskTime" placeholder="09:00 或 120"></div>
+      <div class="field" id="taskWeekdayField" style="display:none"><label>星期</label>
+        <select id="taskWeekday">
+          <option value="0">周一</option><option value="1">周二</option>
+          <option value="2">周三</option><option value="3">周四</option>
+          <option value="4">周五</option><option value="5">周六</option>
+          <option value="6">周日</option>
+        </select>
+      </div>
+      <div class="field"><label id="taskTimeLabel">时间 / 间隔</label><input id="taskTime" placeholder="09:00 或 120"></div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
       <button id="taskAddBtn">＋ 添加任务</button>
@@ -325,7 +339,7 @@
     </div>
     <div class="row">
       <div class="field"><label>数据源</label>
-        <select id="watchSource" onchange="watchSourceHint()">
+        <select id="watchSource">
           <option value="http">网页 / 文本</option>
           <option value="rss">RSS / Atom 订阅</option>
           <option value="json">JSON 接口</option>
@@ -381,6 +395,42 @@
 <script>
 const $ = id => document.getElementById(id);
 const chat = $('chat'), input = $('input');
+
+/* ---------- 弹层可访问性（M-6）：焦点管理 / Esc 关闭 / Tab 陷阱 / 背景禁滚 ---------- */
+let _lastFocused = null;
+const FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
+function openSheet(el){
+  if(!el || el.classList.contains('show')) return;
+  _lastFocused = document.activeElement;
+  el.classList.add('show');
+  document.body.style.overflow = 'hidden';           // 防止弹层后面页面滚动
+  const first = el.querySelector(FOCUSABLE);
+  if(first) setTimeout(()=>first.focus(), 0);
+}
+function closeSheet(el){
+  if(!el) return;
+  el.classList.remove('show');
+  document.body.style.overflow = '';
+  if(_lastFocused && typeof _lastFocused.focus === 'function') _lastFocused.focus();
+  _lastFocused = null;
+}
+document.addEventListener('keydown', e => {
+  const open = document.querySelector('.overlay.show');
+  if(!open) return;
+  if(e.key === 'Escape'){ closeSheet(open); return; }
+  if(e.key === 'Tab'){
+    const items = [...open.querySelectorAll(FOCUSABLE)].filter(n => n.offsetParent !== null);
+    if(!items.length){ e.preventDefault(); return; }
+    const first = items[0], last = items[items.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    else if(!open.contains(document.activeElement)){ e.preventDefault(); first.focus(); }
+  }
+});
+// 点遮罩空白处关闭（点到 sheet 内部不关）
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('mousedown', e => { if(e.target === ov) closeSheet(ov); });
+});
 
 /* ---------- 后端连通性：把非 JSON 响应转成看得懂的提示 ---------- */
 /* 直接用浏览器打开 index.html（file://）或页面不是由 python server.py 提供时，
@@ -491,12 +541,19 @@ function renderCards(inner, bub, data){
     // 右半边的牌，浮窗朝左开，免得顶出容器
     if (col > cols / 2) slot.classList.add('tip-l');
     slot.tabIndex = 0;                        // 键盘 Tab 聚焦也能看到牌位名
+    // M-5: expose the hidden tooltip's content to assistive technology
+    slot.setAttribute('role', 'img');
+    slot.setAttribute('aria-label', '第' + (i + 1) + '张 ' + (c.position || '') + '：' +
+      (c.name || '') + ' ' + (c.orientation || ''));
     if (rot) {
       // 横躺的牌（凯尔特十字的「阻碍」）：宽高对调、压在中心那张上
       slot.style.zIndex = '6';
     }
-    const img = c.image
-      ? '<img src="' + escAttr(c.image) + '" alt="' + escAttr(c.name || '') + '" loading="lazy">'
+    // m-9: only allow the backend's fixed cards/*.jpeg image paths
+    const safeImg = typeof c.image === 'string' && /^cards\/[A-Za-z0-9_\-\.]+\.(jpe?g|png)$/i.test(c.image)
+      ? c.image : '';
+    const img = safeImg
+      ? '<img src="' + escAttr(safeImg) + '" alt="' + escAttr(c.name || '') + '" loading="lazy">'
       : '';
     const rev = c.orientation === '逆位' ? ' rev' : '';
     // 牌面上只留序号；牌位名要鼠标移上去才显示，移开就消失
@@ -579,10 +636,12 @@ $('preset').addEventListener('change', e => {
   $('presetNote').textContent = PRESET_NOTE[v] || '';
 });
 
-$('settingsBtn').onclick = () => { $('overlay').classList.add('show'); };
-$('closeBtn').onclick = () => { $('overlay').classList.remove('show'); };
+$('settingsBtn').onclick = () => { openSheet($('overlay')); };
+$('closeBtn').onclick = () => { closeSheet($('overlay')); };
 $('newBtn').onclick = () => {
   history = []; chat.innerHTML='';
+  // m-15: don't let queued images leak into an unrelated new conversation
+  pendingImages = []; renderImages();
   addMsg('assistant','新的一页。这次，你想从哪里说起？');
 };
 
@@ -604,11 +663,19 @@ function collectConfig(){
 }
 
 $('saveBtn').onclick = async () => {
-  const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectConfig())});
-  const d = await r.json();
-  $('testStatus').className='status ok'; $('testStatus').textContent='已保存。';
-  await loadConfig();
-  $('overlay').classList.remove('show');
+  try {
+    const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectConfig())});
+    const d = await r.json();
+    if (!r.ok || d.error) {
+      $('testStatus').className='status err'; $('testStatus').textContent='保存失败：'+(d.error||('HTTP '+r.status));
+      return;
+    }
+    $('testStatus').className='status ok'; $('testStatus').textContent='已保存。';
+    await loadConfig();
+    closeSheet($('overlay'));
+  } catch (e) {
+    $('testStatus').className='status err'; $('testStatus').textContent='保存失败：'+e.message;
+  }
 };
 
 $('testBtn').onclick = async () => {
@@ -667,6 +734,8 @@ async function send(){
   }catch(e){ full+='\n[错误] '+e; bub.textContent=full; }
   if(!full) bub.textContent='（没有收到回复，检查设置里的连接。）';
   history.push({role:'assistant',content:full});
+  // m-16: keep only the recent window in-session (server uses the last 20)
+  if(history.length > 40) history = history.slice(-40);
   streaming=false; $('sendBtn').disabled=false;
 }
 
@@ -739,8 +808,8 @@ function renderMem(){
   }
 }
 
-$('memoryBtn').onclick = () => { $('memOverlay').classList.add('show'); loadMemory(); };
-$('memCloseBtn').onclick = () => { $('memOverlay').classList.remove('show'); };
+$('memoryBtn').onclick = () => { openSheet($('memOverlay')); loadMemory(); };
+$('memCloseBtn').onclick = () => { closeSheet($('memOverlay')); };
 document.querySelectorAll('.mem-tabs button').forEach(b => {
   b.onclick = () => {
     document.querySelectorAll('.mem-tabs button').forEach(x=>x.classList.remove('active'));
@@ -816,7 +885,9 @@ function renderTasks(){
     const row=document.createElement('div'); row.className='care-row';
     const when = t.kind==='interval' ? (t.interval_min+' 分钟') : (t.kind==='once' ? t.run_at : t.cron_time);
     const tdiv=document.createElement('div'); tdiv.className='t';
-    tdiv.textContent=(t.enabled?'':'[停用] ')+t.name+'　<span style="color:var(--muted);font-weight:400">'+kindLabel[t.kind]+' '+when+'</span>';
+    tdiv.appendChild(document.createTextNode((t.enabled?'':'[停用] ')+t.name+'　'));
+    const whenSpan=document.createElement('span'); whenSpan.className='when-inline';
+    whenSpan.textContent=kindLabel[t.kind]+' '+when; tdiv.appendChild(whenSpan);
     const sdiv=document.createElement('div'); sdiv.className='s'; sdiv.textContent='意图：'+t.intent+(t.last_run?'　上次：'+t.last_run:'　尚未运行');
     const cdiv=document.createElement('div'); cdiv.className='c';
     const acts=document.createElement('div'); acts.style.marginTop='6px'; acts.style.display='flex'; acts.style.gap='6px';
@@ -867,7 +938,13 @@ function renderWatchers(){
   ws.forEach(w=>{
     const row=document.createElement('div'); row.className='care-row';
     const tdiv=document.createElement('div'); tdiv.className='t';
-    tdiv.textContent=(w.enabled?'':'[停用] ')+w.name+'　<span style="color:var(--muted);font-weight:400">'+WATCH_SOURCE_LABEL[w.source_type]+' · '+WATCH_RULE_LABEL[w.rule]+(w.keyword?'「'+w.keyword+'」':'')+(w.rule.indexOf('t')===0||w.rule==='gte'||w.rule==='lte'?' '+w.threshold:'')+'</span>';
+    tdiv.appendChild(document.createTextNode((w.enabled?'':'[停用] ')+w.name+'　'));
+    const meta=document.createElement('span'); meta.className='when-inline';
+    // m-13: show the threshold for every numeric rule (gt/gte/lt/lte)
+    meta.textContent=WATCH_SOURCE_LABEL[w.source_type]+' · '+WATCH_RULE_LABEL[w.rule]+
+      (w.keyword?'「'+w.keyword+'」':'')+
+      (['gt','gte','lt','lte'].indexOf(w.rule)>=0?' '+w.threshold:'');
+    tdiv.appendChild(meta);
     const sdiv=document.createElement('div'); sdiv.className='s';
     sdiv.textContent='提醒：'+w.intent+'　间隔 '+w.interval_min+' 分 / 冷却 '+w.cooldown_min+' 分'+(w.last_fire?'　上次触发：'+w.last_fire:(w.last_check?'　上次检查：'+w.last_check:'　尚未检查'));
     const acts=document.createElement('div'); acts.style.cssText='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap';
@@ -891,6 +968,7 @@ function renderWatchLog(){
     row.appendChild(tdiv); row.appendChild(sdiv); box.appendChild(row);
   });
 }
+updateTaskKindUI();
 $('watchSource') && ($('watchSource').onchange=watchSourceHint);
 $('watchAddBtn').onclick = async () => {
   const watcher={
@@ -909,7 +987,7 @@ $('watchAddBtn').onclick = async () => {
   const d=await r.json();
   if(d.ok){ ['watchName','watchIntent','watchUrl','watchKeyword','watchThreshold','watchCity','watchField'].forEach(id=>$(id).value=''); }
   await loadCare(true);
-  $('careStatus').className=d.ok?'status ok':'status'; $('careStatus').textContent=d.ok?'盯事任务已添加':'添加失败：'+(d.error||'');
+  $('careStatus').className=d.ok?'status ok':'status err'; $('careStatus').textContent=d.ok?'盯事任务已添加':'添加失败：'+(d.error||'');
 };
 $('watchCheckBtn').onclick = async () => {
   $('careStatus').className='status'; $('careStatus').textContent='检查中（可能抓取网络，稍候）…';
@@ -926,8 +1004,8 @@ $('watchClearLogBtn').onclick = async () => {
   await loadCare(true);
   $('careStatus').className='status ok'; $('careStatus').textContent='判定日志已清空';
 };
-$('careBtn').onclick = () => { $('careOverlay').classList.add('show'); loadCare(); watchSourceHint(); };
-$('careCloseBtn').onclick = () => { $('careOverlay').classList.remove('show'); };
+$('careBtn').onclick = () => { openSheet($('careOverlay')); loadCare(); watchSourceHint(); };
+$('careCloseBtn').onclick = () => { closeSheet($('careOverlay')); };
 $('careMaster').onchange = async e => {
   await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({op:'settings',values:{master:e.target.checked}})});
@@ -940,25 +1018,39 @@ async function saveQuiet(){
   $('careStatus').className='status ok'; $('careStatus').textContent='静默时段已保存';
 }
 $('quietStart').onchange=saveQuiet; $('quietEnd').onchange=saveQuiet;
+function updateTaskKindUI(){
+  const kind=$('taskKind').value;
+  $('taskWeekdayField').style.display = kind==='weekly' ? '' : 'none';
+  $('taskTimeLabel').textContent = kind==='once' ? '日期 + 时间' : (kind==='interval' ? '间隔（分钟）' : '时间');
+  $('taskTime').placeholder = kind==='once' ? '2026-12-25 09:00' : (kind==='interval' ? '120' : '09:00');
+}
+$('taskKind').addEventListener('change', updateTaskKindUI);
 $('taskAddBtn').onclick = async () => {
   const name=$('taskName').value.trim(), intent=$('taskIntent').value.trim();
   if(!intent){ alert('请填写「意图」'); return; }
   const kind=$('taskKind').value, time=$('taskTime').value.trim();
   const task={name:name||'主动关怀',intent,kind};
   if(kind==='interval') task.interval_min=parseInt(time)||120;
-  else if(kind==='once') task.run_at=time;
-  else task.cron_time=time||'09:00';
+  else if(kind==='once'){
+    // M-2: backend expects "%Y-%m-%d %H:%M", not a bare "09:00"
+    const m=time.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?$/);
+    if(!m){ alert('「仅一次」请填完整日期时间，例如 2026-12-25 09:00'); return; }
+    task.run_at=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')+' '+(m[4]||'09').padStart(2,'0')+':'+m[5];
+  } else {
+    task.cron_time=/^\d{1,2}:\d{2}$/.test(time)?time:'09:00';
+    if(kind==='weekly') task.weekday=parseInt($('taskWeekday').value,10);
+  }
   const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({op:'add_task',task})});
   const d=await r.json(); if(d.ok){ $('taskName').value=''; $('taskIntent').value=''; }
   await loadCare(true);
-  $('careStatus').className='status ok'; $('careStatus').textContent=d.ok?'任务已添加':'添加失败：'+(d.error||'');
+  $('careStatus').className=d.ok?'status ok':'status err'; $('careStatus').textContent=d.ok?'任务已添加':'添加失败：'+(d.error||'');
 };
 $('careRunBtn').onclick = async () => {
   $('careStatus').className='status'; $('careStatus').textContent='检查中…';
   const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({op:'run_now'})});
-  const d=await r.json(); careData=d; renderTasks(); renderOutbox();
+  const d=await r.json(); careData=d; renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
   $('careStatus').className='status ok';
   $('careStatus').textContent=(d.fired&&d.fired.length)?('触发了 '+d.fired.length+' 条主动消息'):'当前没有到点的任务';
 };
@@ -1023,8 +1115,8 @@ function renderKB(){
     row.appendChild(t);row.appendChild(c);row.appendChild(acts);list.appendChild(row);
   });
 }
-$('kbBtn').onclick=()=>{$('kbOverlay').classList.add('show');loadKB();};
-$('kbCloseBtn').onclick=()=>{$('kbOverlay').classList.remove('show');};
+$('kbBtn').onclick=()=>{openSheet($('kbOverlay'));loadKB();};
+$('kbCloseBtn').onclick=()=>{closeSheet($('kbOverlay'));};
 $('kbAddBtn').onclick=async()=>{
   const title=$('kbTitle').value.trim(), content=$('kbContent').value.trim(), tags=$('kbTags').value.trim();
   if(!content){ $('kbStatus').className='status err'; $('kbStatus').textContent='内容不能为空'; return; }
@@ -1043,8 +1135,9 @@ $('kbExportBtn').onclick=async()=>{
   const d=await (await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({op:'kb_export'})})).json();
   const blob=new Blob([d.markdown],{type:'text/markdown;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='olivia-kb.md';a.click();
-  URL.revokeObjectURL(a.href);
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='olivia-kb.md';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 0);
 };
 
 /* ---------- 视觉设置 ---------- */

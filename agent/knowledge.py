@@ -14,7 +14,7 @@ KNOWLEDGE_DIR = os.path.join(REPO_DIR, "knowledge")
 MEANINGS_DIR = os.path.join(KNOWLEDGE_DIR, "meanings")
 
 # stop tokens that carry little topic signal
-STOP = set("的 了 和 是 在 我 你 他 她 它 们 这 那 有 就 不 也 都 而 及 与 或 一个 什么 怎么 怎么 一些 可以 需要 是否 请 帮 我想 觉得 因为 所以 但是 如果 已经 还是 现在 自己".split())
+STOP = set("的 了 和 是 在 我 你 他 她 它 们 这 那 有 就 不 也 都 而 及 与 或 一个 什么 怎么 一些 可以 需要 是否 请 帮 我想 觉得 因为 所以 但是 如果 已经 还是 现在 自己".split())
 
 
 def _read_files():
@@ -115,12 +115,15 @@ def _load_meanings():
     if not os.path.isdir(MEANINGS_DIR):
         return _MEANINGS_CACHE
     import re as _re
-    current = None
-    bucket = None
     for root, _dirs, files in os.walk(MEANINGS_DIR):
         for fn in sorted(files):
             if not fn.lower().endswith(".md"):
                 continue
+            # m4: parser state must NOT leak between files — a file ending
+            # on a heading used to attach its continuation lines to the next
+            # file's last card.
+            current = None
+            bucket = None
             path = os.path.join(root, fn)
             with open(path, "r", encoding="utf-8") as f:
                 for raw in f:
@@ -145,7 +148,9 @@ def _load_meanings():
                     elif line.startswith("- 逆位："):
                         _MEANINGS_CACHE[current]["逆位"] = line[len("- 逆位："):].strip()
                         bucket = "逆位"
-                    elif bucket and line:
+                    elif bucket and line and not line.startswith(("#", "-")):
+                        # only plain continuation lines extend the bucket;
+                        # stray headings/bullets must not be appended
                         _MEANINGS_CACHE[current][bucket] += " " + line
     return _MEANINGS_CACHE
 
