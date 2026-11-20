@@ -149,6 +149,24 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 
 ---
 
+## 主动关怀（L3 · Always-on）
+
+对应 [Anthropic《Building always-on agents》](https://claude.com/resources/articles/building-always-on-agents) 的四个原语，做成本地版：
+
+| 原语 | 落地 |
+|---|---|
+| timers | `tasks` 表：每天 / 每周 / 每隔 N 分钟 / 仅一次 |
+| inbox | `events` 表：手动或未来外部触发的事件入口 |
+| outbox | `messages` 表：Olivia 主动生成的消息 + 桌面通知 |
+| permissions | 总开关 + 静默时段（如 22:00–08:00 不打扰）+ 每任务开关 |
+
+- 后台线程每 30 秒检查到期任务，结合长期记忆写一条**温暖克制的中文关怀消息**，存进收件箱并弹 Windows 桌面通知（`agent/toast.ps1`）。
+- 点顶栏「关怀」配置任务、看收件箱、标记已读。默认**关闭**，需手动开启总开关。
+- 全部本地运行，不向任何外部发送消息。
+- **开机自启**：双击 `agent/autostart.bat`（或把它放进"启动"文件夹）即可让服务随登录启动，L3 才会持续生效；删掉启动项即撤销。
+
+---
+
 ## 作为技能安装
 
 把 `skills/tarot-counselor/` 整个目录放进 Agent 的技能目录：

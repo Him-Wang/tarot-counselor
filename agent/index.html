@@ -39,6 +39,11 @@
   .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
   .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
   .tool-badge{display:inline-block;font-size:11px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
+  .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:10px;background:#e0609a;color:#fff;font-size:10px;line-height:16px;text-align:center}
+  .care-row{padding:9px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+  .care-row .t{font-size:13px;font-weight:600}
+  .care-row .s{font-size:11px;color:var(--muted);margin-top:3px}
+  .care-row .c{font-size:13px;color:var(--ink);margin-top:6px;white-space:pre-wrap}
 
   .composer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px;display:flex;gap:10px;align-items:flex-end}
   textarea{flex:1;resize:none;background:transparent;border:0;outline:0;color:var(--ink);font:inherit;min-height:44px;max-height:160px;padding:6px}
@@ -86,6 +91,7 @@
     <div class="title"><b>Olivia · 奥莉薇娅</b><small>你的私人塔罗咨询师</small></div>
     <div class="spacer"></div>
     <span class="chip" id="backendChip">未配置</span>
+    <button id="careBtn" title="主动关怀">关怀<span id="careBadge" class="care-badge" hidden>0</span></button>
     <button id="memoryBtn">记忆</button>
     <button id="settingsBtn">设置</button>
     <button id="newBtn">新对话</button>
@@ -165,6 +171,48 @@
     </div>
     <div class="status" id="memStatus"></div>
     <div class="actions"><button class="primary" id="memCloseBtn">完成</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="careOverlay">
+  <div class="sheet">
+    <h2>主动关怀 · Always-on</h2>
+    <p class="desc">让 Olivia 在后台定时主动关心你。到点后它会结合记忆写一条消息，存进收件箱并弹桌面通知。只在本机运行，静默时段不打扰。</p>
+    <label class="switch"><input type="checkbox" id="careMaster"> 启用主动关怀（总开关）</label>
+    <div class="row">
+      <div class="field"><label>静默开始</label><input id="quietStart" placeholder="22:00"></div>
+      <div class="field"><label>静默结束</label><input id="quietEnd" placeholder="08:00"></div>
+    </div>
+    <div class="status" id="careStatus"></div>
+
+    <h3 style="font-size:14px;margin:16px 0 8px">定时任务</h3>
+    <div id="taskList" class="mem-list" style="max-height:180px">加载中…</div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label>名称</label><input id="taskName" placeholder="早安问候"></div>
+      <div class="field"><label>意图（关心什么）</label><input id="taskIntent" placeholder="问候我，提醒今天照顾好自己"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>频率</label>
+        <select id="taskKind">
+          <option value="daily">每天</option>
+          <option value="weekly">每周</option>
+          <option value="interval">每隔 N 分钟</option>
+          <option value="once">仅一次</option>
+        </select>
+      </div>
+      <div class="field"><label>时间 / 间隔</label><input id="taskTime" placeholder="09:00 或 120"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="taskAddBtn">＋ 添加任务</button>
+      <button id="careRunBtn">立即检查一次</button>
+    </div>
+
+    <h3 style="font-size:14px;margin:16px 0 8px">收件箱 <span id="careUnread" class="care-badge" hidden>0</span></h3>
+    <div id="outboxList" class="mem-list" style="max-height:200px">加载中…</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="outboxReadBtn">全部标为已读</button>
+    </div>
+    <div class="actions"><button class="primary" id="careCloseBtn">完成</button></div>
   </div>
 </div>
 
@@ -414,7 +462,105 @@ $('memClearBtn').onclick = async () => {
   $('memStatus').className='status ok'; $('memStatus').textContent = '已清空全部记忆。';
 };
 
+// ---------- 主动关怀 (L3 always-on) ----------
+let careData = null;
+async function loadCare(silent){
+  const r = await fetch('/api/schedule'); careData = await r.json();
+  const s = careData.status||{};
+  $('careMaster').checked = !!s.master;
+  $('quietStart').value = s.quiet_start||'22:00';
+  $('quietEnd').value = s.quiet_end||'08:00';
+  const unread = s.unread||0;
+  $('careBadge').hidden = unread===0; $('careBadge').textContent = unread;
+  $('careUnread').hidden = unread===0; $('careUnread').textContent = unread;
+  renderTasks(); renderOutbox();
+  if(!silent) $('careStatus').className='status';
+}
+function renderTasks(){
+  const list = $('taskList'); list.innerHTML='';
+  const tasks = (careData&&careData.tasks)||[];
+  if(!tasks.length){ list.innerHTML='<div class="mem-empty">还没有定时任务。添加一个，比如「每天早上 9 点问候」。</div>'; return; }
+  const kindLabel = {daily:'每天',weekly:'每周',interval:'每隔',once:'仅一次'};
+  tasks.forEach(t => {
+    const row=document.createElement('div'); row.className='care-row';
+    const when = t.kind==='interval' ? (t.interval_min+' 分钟') : (t.kind==='once' ? t.run_at : t.cron_time);
+    const tdiv=document.createElement('div'); tdiv.className='t';
+    tdiv.textContent=(t.enabled?'':'[停用] ')+t.name+'　<span style="color:var(--muted);font-weight:400">'+kindLabel[t.kind]+' '+when+'</span>';
+    const sdiv=document.createElement('div'); sdiv.className='s'; sdiv.textContent='意图：'+t.intent+(t.last_run?'　上次：'+t.last_run:'　尚未运行');
+    const cdiv=document.createElement('div'); cdiv.className='c';
+    const acts=document.createElement('div'); acts.style.marginTop='6px'; acts.style.display='flex'; acts.style.gap='6px';
+    const mkBtn=(label,op,extra)=>{ const b=document.createElement('button'); b.textContent=label;
+      b.onclick=async()=>{ await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(Object.assign({op,id:t.id},extra||{}))}); await loadCare(true); }; return b; };
+    acts.appendChild(mkBtn(t.enabled?'停用':'启用','update_task',{task:{enabled:!t.enabled}}));
+    acts.appendChild(mkBtn('删除','delete_task'));
+    row.appendChild(tdiv); row.appendChild(sdiv); row.appendChild(cdiv); row.appendChild(acts);
+    list.appendChild(row);
+  });
+}
+function renderOutbox(){
+  const list=$('outboxList'); list.innerHTML='';
+  const msgs=(careData&&careData.outbox)||[];
+  if(!msgs.length){ list.innerHTML='<div class="mem-empty">收件箱还是空的。启用任务并到点后，Olivia 的主动消息会出现在这里。</div>'; return; }
+  msgs.forEach(m => {
+    const row=document.createElement('div'); row.className='care-row';
+    const tdiv=document.createElement('div'); tdiv.className='t';
+    tdiv.textContent=(m.read?'':'● ')+'Olivia　'+m.created_at;
+    const cdiv=document.createElement('div'); cdiv.className='c'; cdiv.textContent=m.content;
+    const acts=document.createElement('div'); acts.style.marginTop='6px'; acts.style.display='flex'; acts.style.gap='6px';
+    if(!m.read){ const rb=document.createElement('button'); rb.textContent='标为已读';
+      rb.onclick=async()=>{ await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({op:'mark_read',id:m.id})}); await loadCare(true); }; acts.appendChild(rb); }
+    const db=document.createElement('button'); db.textContent='删除';
+    db.onclick=async()=>{ await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({op:'delete_message',id:m.id})}); await loadCare(true); }; acts.appendChild(db);
+    row.appendChild(tdiv); row.appendChild(cdiv); row.appendChild(acts); list.appendChild(row);
+  });
+}
+$('careBtn').onclick = () => { $('careOverlay').classList.add('show'); loadCare(); };
+$('careCloseBtn').onclick = () => { $('careOverlay').classList.remove('show'); };
+$('careMaster').onchange = async e => {
+  await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'settings',values:{master:e.target.checked}})});
+  await loadCare(true);
+  $('careStatus').className='status ok'; $('careStatus').textContent=e.target.checked?'主动关怀已开启':'主动关怀已暂停';
+};
+async function saveQuiet(){
+  await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'settings',values:{quiet_start:$('quietStart').value.trim()||'22:00',quiet_end:$('quietEnd').value.trim()||'08:00'}})});
+  $('careStatus').className='status ok'; $('careStatus').textContent='静默时段已保存';
+}
+$('quietStart').onchange=saveQuiet; $('quietEnd').onchange=saveQuiet;
+$('taskAddBtn').onclick = async () => {
+  const name=$('taskName').value.trim(), intent=$('taskIntent').value.trim();
+  if(!intent){ alert('请填写「意图」'); return; }
+  const kind=$('taskKind').value, time=$('taskTime').value.trim();
+  const task={name:name||'主动关怀',intent,kind};
+  if(kind==='interval') task.interval_min=parseInt(time)||120;
+  else if(kind==='once') task.run_at=time;
+  else task.cron_time=time||'09:00';
+  const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'add_task',task})});
+  const d=await r.json(); if(d.ok){ $('taskName').value=''; $('taskIntent').value=''; }
+  await loadCare(true);
+  $('careStatus').className='status ok'; $('careStatus').textContent=d.ok?'任务已添加':'添加失败：'+(d.error||'');
+};
+$('careRunBtn').onclick = async () => {
+  $('careStatus').className='status'; $('careStatus').textContent='检查中…';
+  const r=await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'run_now'})});
+  const d=await r.json(); careData=d; renderTasks(); renderOutbox();
+  $('careStatus').className='status ok';
+  $('careStatus').textContent=(d.fired&&d.fired.length)?('触发了 '+d.fired.length+' 条主动消息'):'当前没有到点的任务';
+};
+$('outboxReadBtn').onclick = async () => {
+  await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'mark_read',all:true})});
+  await loadCare(true);
+};
+
 loadConfig();
+loadCare(true);  // refresh unread badge on page load
 </script>
 </body>
 </html>

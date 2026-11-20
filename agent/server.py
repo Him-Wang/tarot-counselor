@@ -21,6 +21,7 @@ import llm
 import knowledge
 import memory
 import tools
+import scheduler
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -160,6 +161,12 @@ class Handler(BaseHTTPRequestHandler):
                 "facts": memory.list_facts(),
                 "draws": memory.list_draws(),
                 "stats": memory.stats(),
+            })
+        elif p == "/api/schedule":
+            self._send_json({
+                "status": scheduler.status(),
+                "tasks": scheduler.list_tasks(),
+                "outbox": scheduler.list_outbox(),
             })
         else:
             self._send_json({"error": "not found"}, 404)
@@ -366,6 +373,47 @@ class Handler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif p == "/api/schedule":
+            op = body.get("op", "")
+            try:
+                if op == "settings":
+                    ok = scheduler.set_settings(body.get("values", {}))
+                elif op == "add_task":
+                    scheduler.add_task(body.get("task", {}))
+                    ok = True
+                elif op == "update_task":
+                    ok = scheduler.update_task(int(body.get("id", 0)), body.get("task", {}))
+                elif op == "delete_task":
+                    ok = scheduler.delete_task(int(body.get("id", 0)))
+                elif op == "mark_read":
+                    ok = scheduler.mark_read(
+                        body.get("id"), all_read=bool(body.get("all", False)))
+                elif op == "delete_message":
+                    ok = scheduler.delete_message(int(body.get("id", 0)))
+                elif op == "add_event":
+                    ok = scheduler.add_event(
+                        str(body.get("kind", "manual")), str(body.get("payload", "")))
+                elif op == "run_now":
+                    fired = scheduler.run_due_tasks(load_config)
+                    self._send_json({
+                        "ok": True, "fired": fired,
+                        "status": scheduler.status(),
+                        "tasks": scheduler.list_tasks(),
+                        "outbox": scheduler.list_outbox(),
+                    })
+                    return
+                else:
+                    self._send_json({"ok": False, "error": "unknown op"}, 400)
+                    return
+                self._send_json({
+                    "ok": ok,
+                    "status": scheduler.status(),
+                    "tasks": scheduler.list_tasks(),
+                    "outbox": scheduler.list_outbox(),
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 500)
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -373,6 +421,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     port = int(os.environ.get("AGENT_PORT", "8765"))
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    scheduler.start(load_config)
     print("Olivia agent running at http://127.0.0.1:%d" % port)
     print("Press Ctrl+C to stop.")
     try:

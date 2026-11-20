@@ -195,6 +195,40 @@ def stream_chat_events(messages, cfg, tools=None):
     yield {"type": "done", "content": full_content, "tool_calls": calls}
 
 
+def complete(messages, cfg):
+    """Non-streaming completion for a provided message list. Returns text.
+
+    Used by the proactive scheduler to generate a short message without
+    driving a full streaming/agentic loop.
+    """
+    raw_base = cfg.get("base_url", "")
+    url = _normalize_base(raw_base) + "/chat/completions"
+    payload = {
+        "model": cfg.get("model", ""),
+        "messages": messages,
+        "temperature": float(cfg.get("temperature", 0.8)),
+        "stream": False,
+    }
+    payload.update(_extra_options(raw_base, cfg))
+    headers = {"Content-Type": "application/json"}
+    api_key = (cfg.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = "Bearer " + api_key
+    req = urllib.request.Request(
+        url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers, method="POST")
+    try:
+        resp = urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 120)))
+        obj = json.loads(resp.read().decode("utf-8", "replace"))
+        msg = obj["choices"][0].get("message", {})
+        return (msg.get("content") or "")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError("HTTP %s: %s" % (e.code, body))
+    except urllib.error.URLError as e:
+        raise RuntimeError("无法连接接口：%s" % e.reason)
+
+
 def check(cfg):
     """Non-streaming smoke test: send one tiny message, return reply text."""
     raw_base = cfg.get("base_url", "")
