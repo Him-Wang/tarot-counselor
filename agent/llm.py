@@ -102,6 +102,99 @@ def stream_chat(messages, cfg):
                 yield delta
 
 
+def stream_chat_events(messages, cfg, tools=None):
+    """Streaming chat that also surfaces tool calls.
+
+    Yields event dicts:
+      {"type": "token",      "text": <str>}              -- assistant text delta
+      {"type": "tool_calls", "calls": [ {id,name,arguments}, ... ]}
+      {"type": "done",       "content": <str>, "tool_calls": [...]}
+
+    The caller drives the agentic loop: on "tool_calls", execute each tool,
+    append the assistant message (with tool_calls) and {"role":"tool"} results
+    to `messages`, then call this generator again for the next turn.
+    """
+    raw_base = cfg.get("base_url", "")
+    url = _normalize_base(raw_base) + "/chat/completions"
+    payload = {
+        "model": cfg.get("model", ""),
+        "messages": messages,
+        "temperature": float(cfg.get("temperature", 0.8)),
+        "stream": True,
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    payload.update(_extra_options(raw_base, cfg))
+    headers = {"Content-Type": "application/json"}
+    api_key = (cfg.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = "Bearer " + api_key
+
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    try:
+        resp = urllib.request.urlopen(req, timeout=float(cfg.get("timeout", 120)))
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")[:800]
+        except Exception:
+            pass
+        raise RuntimeError("HTTP %s %s\n%s" % (e.code, e.reason, body))
+    except urllib.error.URLError as e:
+        raise RuntimeError("无法连接接口：%s" % e.reason)
+
+    content_parts = []
+    calls_by_index = {}
+
+    with resp:
+        for raw in resp:
+            try:
+                line = raw.decode("utf-8", "replace").strip()
+            except Exception:
+                continue
+            if not line or not line.startswith("data:"):
+                continue
+            chunk = line[5:].strip()
+            if chunk == "[DONE]":
+                break
+            try:
+                obj = json.loads(chunk)
+            except Exception:
+                continue
+            try:
+                delta = obj["choices"][0].get("delta", {}) or {}
+            except Exception:
+                delta = {}
+            text = delta.get("content")
+            if text:
+                content_parts.append(text)
+                yield {"type": "token", "text": text}
+            for tc in (delta.get("tool_calls") or []):
+                idx = tc.get("index", 0)
+                slot = calls_by_index.setdefault(
+                    idx, {"id": "", "name": "", "arguments": ""})
+                if tc.get("id"):
+                    slot["id"] = tc["id"]
+                fn = tc.get("function") or {}
+                if fn.get("name"):
+                    slot["name"] += fn["name"]
+                if fn.get("arguments"):
+                    slot["arguments"] += fn["arguments"]
+
+    calls = []
+    for idx in sorted(calls_by_index):
+        slot = calls_by_index[idx]
+        if slot["name"]:
+            calls.append(slot)
+    full_content = "".join(content_parts)
+    if calls:
+        yield {"type": "tool_calls", "calls": calls}
+    yield {"type": "done", "content": full_content, "tool_calls": calls}
+
+
 def check(cfg):
     """Non-streaming smoke test: send one tiny message, return reply text."""
     raw_base = cfg.get("base_url", "")

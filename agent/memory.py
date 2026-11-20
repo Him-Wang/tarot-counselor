@@ -200,6 +200,34 @@ def _store_draw(conn, reply, question, now):
 
 # ---------- public API ----------
 
+def add_fact(kind, text, pinned=False):
+    """Insert or refresh a fact (used by the save_memory tool). Returns True."""
+    init_db()
+    n = _norm(text)
+    if not n or CRISIS_RE.search(text or ""):
+        return False
+    conn = _conn()
+    now = _now()
+    try:
+        row = conn.execute(
+            "SELECT id FROM facts WHERE kind=? AND norm=?", (kind, n)).fetchone()
+        if row:
+            conn.execute(
+                "UPDATE facts SET last_seen=?, pinned=MAX(pinned,?) WHERE id=?",
+                (now, 1 if pinned else 0, row["id"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO facts(kind,norm,text,tags,pinned,sensitive,last_seen,created_at) "
+                "VALUES(?,?,?,?,?,0,?,?)",
+                (kind, n, text, "", 1 if pinned else 0, now, now),
+            )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def remember(user_msg, reply):
     """Persist one turn: raw messages, extracted facts, profile, draw record."""
     init_db()

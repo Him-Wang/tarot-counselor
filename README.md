@@ -46,8 +46,8 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 │   └── persona.en.md          # English system prompt
 ├── skills/tarot-counselor/
 │   └── SKILL.md               # 技能格式（按需触发）
-├── agent/                     # 本地网页 Agent（双后端 + 长期记忆）
-│   ├── llm.py / knowledge.py / memory.py / server.py
+├── agent/                     # 本地网页 Agent（双后端 + 记忆 + 工具调用）
+│   ├── llm.py / knowledge.py / memory.py / tools.py / server.py
 │   └── data/memory.db         # 私人记忆库（gitignore，绝不提交）
 ├── docs/                      # GitHub Pages 静态站源码
 ├── knowledge/                 # 专业知识库（辅助解牌）
@@ -127,6 +127,25 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 - 说"忘掉刚才记的"即可撤销最近线索。
 - 点顶栏「记忆」打开面板：查看/固定/添加/删除线索、看抽牌历史、手动添加画像、整理去重、清空全部，还可一键开关记忆。
 - 静态网页版（GitHub Pages）无服务端，记忆功能只在本地版可用。
+
+---
+
+## 工具调用（本地 Agent，自主执行）
+
+本地版是真正的 **agentic loop**：模型自己判断何时调用工具，执行后把结果回填给模型继续，直到它给出最终回答。前端会用 `⚙` 徽章显示每一步工具执行。
+
+四个工具（`agent/tools.py`）：
+
+| 工具 | 作用 | 安全约束 |
+|---|---|---|
+| `draw_cards` | 按牌阵从标准 78 张韦特牌库**客观随机**抽牌（不放回，同一牌阵不重复），返回牌名/正逆位/位置 | 模型只能选牌阵和填问题，不能挑牌/换牌/编牌；抽到什么解什么 |
+| `search_knowledge` | 检索 `knowledge/` 专业资料 | 只做专业判断依据，不从牌里来 |
+| `save_memory` | 存偏好/边界/「请记住」 | 危机内容拒绝入库 |
+| `crisis_check` | 检测自伤/轻生等急性危机信号 | 命中即跳出塔罗师角色，走安全流程 |
+
+- 实测：本地 `dsv4-9b-heretic-max:latest` 支持工具调用，能正确产出 `draw_cards(spread, question)`；端到端验证通过（模型调用工具→拿到牌→逐张按"牌意→位置→问题→情境"解读）。
+- 设置里可一键关闭工具调用（`tools_enabled`）。
+- 抽牌由代码随机完成，彻底解决"模型可能编牌/重牌"的问题。
 
 ---
 

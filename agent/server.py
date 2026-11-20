@@ -20,6 +20,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import llm
 import knowledge
 import memory
+import tools
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -75,6 +76,8 @@ DEFAULT_CONFIG = {
     "model": PRESETS["deepseek-flash"]["model"],
     "temperature": 0.8,
     "timeout": 120,
+    "tools_enabled": True,
+    "memory_enabled": True,
 }
 
 
@@ -167,7 +170,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/config":
             cfg = load_config()
-            for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout", "think"):
+            for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout",
+                      "think", "tools_enabled", "memory_enabled"):
                 if k in body:
                     cfg[k] = body[k]
             # don't overwrite a saved key with the masked display string
@@ -220,6 +224,9 @@ class Handler(BaseHTTPRequestHandler):
                         system += "\n\n---\n" + mem_ctx
                 except Exception:
                     pass
+            use_tools = cfg.get("tools_enabled", True)
+            if use_tools:
+                system += "\n\n---\n" + tools.TOOL_GUIDE
             msgs = [{"role": "system", "content": system}]
             for h in history[-20:]:
                 msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")})
@@ -231,26 +238,67 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
             try:
-                self.wfile.write(
-                    ("data: " + json.dumps({"meta": used}, ensure_ascii=False) + "\n\n").encode("utf-8")
-                )
-                self.wfile.flush()
+                def emit(obj):
+                    self.wfile.write(
+                        ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                    self.wfile.flush()
+
+                emit({"meta": used})
                 full = []
                 if preset_reply is not None:
                     full.append(preset_reply)
-                    self.wfile.write(
-                        ("data: " + json.dumps({"token": preset_reply}, ensure_ascii=False) + "\n\n").encode("utf-8")
-                    )
-                    self.wfile.flush()
+                    emit({"token": preset_reply})
                 else:
-                    for token in llm.stream_chat(msgs, cfg):
-                        full.append(token)
-                        self.wfile.write(
-                            ("data: " + json.dumps({"token": token}, ensure_ascii=False) + "\n\n").encode("utf-8")
-                        )
-                        self.wfile.flush()
-                self.wfile.write(b"data: {\"done\": true}\n\n")
-                self.wfile.flush()
+                    # ---- agentic loop: model <-> tools until no tool call ----
+                    MAX_ROUNDS = 6
+                    for _round in range(MAX_ROUNDS):
+                        round_calls = []
+                        final_content = ""
+                        for ev in llm.stream_chat_events(
+                                msgs, cfg, tools=tools.TOOLS if use_tools else None):
+                            if ev["type"] == "token":
+                                full.append(ev["text"])
+                                emit({"token": ev["text"]})
+                            elif ev["type"] == "tool_calls":
+                                round_calls = ev["calls"]
+                            elif ev["type"] == "done":
+                                final_content = ev.get("content", "")
+                        if not round_calls:
+                            break
+
+                        # Build the assistant tool-call message + tool results
+                        # in the exact shape the OpenAI protocol expects.
+                        tc_payload = []
+                        result_msgs = []
+                        for c in round_calls:
+                            name = c.get("name", "")
+                            try:
+                                args = json.loads(c["arguments"]) if c.get("arguments") else {}
+                            except Exception:
+                                args = {}
+                            result = tools.execute(name, args)
+                            emit({"tool": tools.summary(name, result)})
+                            tc_payload.append({
+                                "id": c.get("id", ""),
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "arguments": json.dumps(args, ensure_ascii=False),
+                                },
+                            })
+                            result_msgs.append({
+                                "role": "tool",
+                                "tool_call_id": c.get("id", ""),
+                                "content": json.dumps(result, ensure_ascii=False),
+                            })
+                        msgs.append({
+                            "role": "assistant",
+                            "content": final_content or "",
+                            "tool_calls": tc_payload,
+                        })
+                        msgs.extend(result_msgs)
+                    # ---- end agentic loop ----
+                emit({"done": True})
                 # persist this turn (rule-based extraction, ~0 ms) after stream
                 if cfg.get("memory_enabled", True) and full and preset_reply is None:
                     try:

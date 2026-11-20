@@ -38,6 +38,7 @@
   .msg.user .bub{background:linear-gradient(135deg,#5a3d86,#3c2c5e);border-color:#6b4a9c}
   .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
   .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
+  .tool-badge{display:inline-block;font-size:11px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
 
   .composer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px;display:flex;gap:10px;align-items:flex-end}
   textarea{flex:1;resize:none;background:transparent;border:0;outline:0;color:var(--ink);font:inherit;min-height:44px;max-height:160px;padding:6px}
@@ -129,6 +130,7 @@
       <div class="field"><label>temperature</label><input id="temp" type="number" step="0.1" value="0.8"></div>
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
+    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（抽牌/检索/记忆/危机检查）</label>
 
     <div class="status" id="testStatus"></div>
     <div class="field" style="margin-top:14px">
@@ -210,6 +212,7 @@ async function loadConfig(){
   $('apiKey').placeholder = c.api_key_set ? '已保存密钥（留空则不覆盖）' : 'sk-…';
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
+  $('toolsEnabled').checked = c.tools_enabled !== false;
   $('presetNote').textContent = PRESET_NOTE[c.backend] || '';
   $('backendChip').textContent = (c.backend||'?') + (c.api_key_set||c.backend==='ollama' ? ' · 就绪' : ' · 待填 key');
   $('docList').textContent = d.docs && d.docs.length ? d.docs.join('\n') : '（knowledge/ 目录还是空的）';
@@ -235,7 +238,8 @@ function collectConfig(){
     model: $('model').value.trim(),
     api_key: $('apiKey').value.trim(),
     temperature: parseFloat($('temp').value)||0.8,
-    timeout: parseInt($('timeout').value)||120
+    timeout: parseInt($('timeout').value)||120,
+    tools_enabled: $('toolsEnabled').checked
   };
 }
 
@@ -281,6 +285,11 @@ async function send(){
         if(!line) continue;
         let obj; try{obj=JSON.parse(line.slice(5).trim())}catch(e){continue}
         if(obj.meta && obj.meta.length){ meta.textContent='参考了资料：'+obj.meta.join('、'); }
+        if(obj.tool){
+          const badge=document.createElement('div'); badge.className='tool-badge';
+          badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
+          chat.scrollTop=chat.scrollHeight;
+        }
         if(obj.token){ full+=obj.token; bub.textContent=full; chat.scrollTop=chat.scrollHeight; }
         if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
       }
