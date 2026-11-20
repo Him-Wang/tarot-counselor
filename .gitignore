@@ -17,3 +17,9 @@ __pycache__/
 
 # Personal case notes (do not commit)
 cases/
+
+# Private long-term memory (never commit — contains personal data)
+agent/data/
+*.db
+*.db-wal
+*.db-shm

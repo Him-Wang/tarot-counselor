@@ -46,7 +46,9 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 │   └── persona.en.md          # English system prompt
 ├── skills/tarot-counselor/
 │   └── SKILL.md               # 技能格式（按需触发）
-├── agent/                     # 本地网页 Agent（双后端）
+├── agent/                     # 本地网页 Agent（双后端 + 长期记忆）
+│   ├── llm.py / knowledge.py / memory.py / server.py
+│   └── data/memory.db         # 私人记忆库（gitignore，绝不提交）
 ├── docs/                      # GitHub Pages 静态站源码
 ├── knowledge/                 # 专业知识库（辅助解牌）
 ├── build_docs.py              # 把人设+知识打包给静态站
@@ -106,6 +108,25 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 **元规则：牌不开口，人开口**——塔罗是主体；只在风险评估与急性危机时，才跳出塔罗师角色走安全流程。
 
 改了 `knowledge/` 或 `prompts/persona.zh.md` 后，运行 `python build_docs.py` 重新生成 `docs/persona.js` 与 `docs/knowledge.js`，提交推送即可更新在线版（Pages 几分钟后自动重建）。
+
+---
+
+## 长期记忆（仅本地版）
+
+本地 Agent 会记住关于你的信息，让咨询有连续性；数据只存在 `agent/data/memory.db`（已 gitignore，绝不上传）。结构参考 mem0 的"抽取→存储→检索→注入"与 Letta 的分层，落到纯 stdlib：
+
+| 层 | 内容 | 表 |
+|---|---|---|
+| 稳定画像 | 称呼等，每轮常驻 | `profile` |
+| 长期线索 | 偏好/边界/「请记住」的事实，规则抽取（零延迟，不额外调模型）| `facts` |
+| 会话原文 | 完整对话，用于回访不重复 | `messages` |
+| 抽牌历史 | 结构化记录牌名/正逆位/牌阵/所问问题 | `draws` |
+
+- 每轮把相关记忆注入 system prompt，Olivia 会自然提起（如"上次你问感情抽到圣杯三，后来如何？"），不会生硬复述，也不会把记忆当成新牌面。
+- **危机内容不进事实库**（遵守上面的边界规则）。
+- 说"忘掉刚才记的"即可撤销最近线索。
+- 点顶栏「记忆」打开面板：查看/固定/添加/删除线索、看抽牌历史、手动添加画像、整理去重、清空全部，还可一键开关记忆。
+- 静态网页版（GitHub Pages）无服务端，记忆功能只在本地版可用。
 
 ---
 

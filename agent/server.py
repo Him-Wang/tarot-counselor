@@ -8,6 +8,9 @@ Routes:
   GET  /api/knowledge    list knowledge docs
   POST /api/test         smoke-test current backend
   POST /api/chat         SSE stream: {"message", "history":[...]} -> data: {"token"} ...
+  GET  /api/memory       memory overview (profile/facts/draws/stats)
+  POST /api/memory       {op: pin|unpin|delete_fact|delete_draw|profile_set|
+                          profile_delete|forget|forget_recent|clear|add_fact, ...}
 """
 
 import json
@@ -16,6 +19,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 import llm
 import knowledge
+import memory
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -146,6 +150,14 @@ class Handler(BaseHTTPRequestHandler):
             })
         elif p == "/api/knowledge":
             self._send_json({"docs": knowledge.list_docs()})
+        elif p == "/api/memory":
+            self._send_json({
+                "enabled": load_config().get("memory_enabled", True),
+                "profile": memory.list_profile(),
+                "facts": memory.list_facts(),
+                "draws": memory.list_draws(),
+                "stats": memory.stats(),
+            })
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -182,6 +194,15 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("api_key"):
                 cfg["api_key"] = body["api_key"]
 
+            # explicit "forget" command -> handled locally, streamed as a reply
+            import re as _re
+            preset_reply = None
+            if _re.search(r"(忘掉|忘记|删掉|清除)(刚才|刚刚|前面|上次)?(说的|记的|记住的|这段|这些|线索)", message) \
+                    or _re.search(r"忘掉刚才|忘记刚才", message):
+                n = memory.forget_recent(3)
+                preset_reply = ("好，我已经忘掉最近记下的 %d 条线索。" % n) if n \
+                    else "我这边没有找到刚记下的内容。"
+
             # retrieve relevant knowledge for this turn
             context, used = knowledge.retrieve(message)
             system = load_persona()
@@ -191,6 +212,14 @@ class Handler(BaseHTTPRequestHandler):
                     "不要臆测；塔罗只用于打开话题与照见感受，风险评估/诊断/干预选择绝不从牌里来。\n\n"
                     + context
                 )
+            # inject private long-term memory (if enabled)
+            if cfg.get("memory_enabled", True):
+                try:
+                    mem_ctx = memory.context(message)
+                    if mem_ctx:
+                        system += "\n\n---\n" + mem_ctx
+                except Exception:
+                    pass
             msgs = [{"role": "system", "content": system}]
             for h in history[-20:]:
                 msgs.append({"role": h.get("role", "user"), "content": h.get("content", "")})
@@ -206,17 +235,89 @@ class Handler(BaseHTTPRequestHandler):
                     ("data: " + json.dumps({"meta": used}, ensure_ascii=False) + "\n\n").encode("utf-8")
                 )
                 self.wfile.flush()
-                for token in llm.stream_chat(msgs, cfg):
+                full = []
+                if preset_reply is not None:
+                    full.append(preset_reply)
                     self.wfile.write(
-                        ("data: " + json.dumps({"token": token}, ensure_ascii=False) + "\n\n").encode("utf-8")
+                        ("data: " + json.dumps({"token": preset_reply}, ensure_ascii=False) + "\n\n").encode("utf-8")
                     )
                     self.wfile.flush()
+                else:
+                    for token in llm.stream_chat(msgs, cfg):
+                        full.append(token)
+                        self.wfile.write(
+                            ("data: " + json.dumps({"token": token}, ensure_ascii=False) + "\n\n").encode("utf-8")
+                        )
+                        self.wfile.flush()
                 self.wfile.write(b"data: {\"done\": true}\n\n")
                 self.wfile.flush()
+                # persist this turn (rule-based extraction, ~0 ms) after stream
+                if cfg.get("memory_enabled", True) and full and preset_reply is None:
+                    try:
+                        memory.remember(message, "".join(full))
+                    except Exception:
+                        pass
             except Exception as e:
                 payload = json.dumps({"error": str(e)}, ensure_ascii=False)
                 self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
                 self.wfile.flush()
+        elif p == "/api/memory":
+            op = body.get("op", "")
+            try:
+                if op == "pin":
+                    ok = memory.pin_fact(int(body.get("id", 0)), True)
+                elif op == "unpin":
+                    ok = memory.pin_fact(int(body.get("id", 0)), False)
+                elif op == "delete_fact":
+                    ok = memory.delete_fact(int(body.get("id", 0)))
+                elif op == "delete_draw":
+                    ok = memory.delete_draw(int(body.get("id", 0)))
+                elif op == "profile_set":
+                    ok = memory.set_profile(str(body.get("key", "")), str(body.get("value", "")))
+                elif op == "profile_delete":
+                    ok = memory.delete_profile(str(body.get("key", "")))
+                elif op == "add_fact":
+                    kind = str(body.get("kind", "fact"))
+                    text = str(body.get("text", "")).strip()
+                    n = memory._norm(text)
+                    if not n:
+                        ok = False
+                    else:
+                        import sqlite3
+                        conn = memory._conn()
+                        try:
+                            conn.execute(
+                                "INSERT INTO facts(kind,norm,text,pinned,sensitive,last_seen,created_at) "
+                                "VALUES(?,?,?,0,0,?,?)",
+                                (kind, n, text, memory._now(), memory._now()))
+                            conn.commit()
+                            ok = True
+                        finally:
+                            conn.close()
+                elif op == "forget":
+                    ok = memory.forget(str(body.get("text", ""))) > 0
+                elif op == "forget_recent":
+                    ok = memory.forget_recent(int(body.get("n", 3))) > 0
+                elif op == "clear":
+                    ok = memory.clear()
+                elif op == "toggle":
+                    cfg = load_config()
+                    cfg["memory_enabled"] = bool(body.get("enabled", True))
+                    save_config(cfg)
+                    ok = True
+                else:
+                    self._send_json({"ok": False, "error": "unknown op"}, 400)
+                    return
+                self._send_json({
+                    "ok": ok,
+                    "profile": memory.list_profile(),
+                    "facts": memory.list_facts(),
+                    "draws": memory.list_draws(),
+                    "stats": memory.stats(),
+                    "enabled": load_config().get("memory_enabled", True),
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 500)
         else:
             self._send_json({"error": "not found"}, 404)
 

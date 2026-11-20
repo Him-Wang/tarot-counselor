@@ -62,6 +62,20 @@
   .status{font-size:12px;margin-top:10px;min-height:18px}
   .status.ok{color:var(--ok)} .status.err{color:var(--err)}
   .doclist{font-size:12px;color:var(--muted);max-height:120px;overflow-y:auto;line-height:1.8}
+  .mem-tabs{display:flex;gap:6px;margin-bottom:12px}
+  .mem-tabs button{padding:6px 12px;font-size:13px}
+  .mem-tabs button.active{background:linear-gradient(135deg,var(--accent),#9a6bff);border-color:transparent;color:#150d24;font-weight:600}
+  .mem-list{max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  .mem-item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:flex-start}
+  .mem-item .grow{flex:1;word-break:break-word}
+  .mem-item .tag{font-size:10px;color:var(--accent2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-right:6px}
+  .mem-item .when{font-size:10px;color:var(--muted);display:block;margin-top:3px}
+  .mem-item button{padding:3px 9px;font-size:11px}
+  .mem-empty{color:var(--muted);font-size:13px;padding:18px;text-align:center}
+  .switch{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-bottom:12px}
+  .switch input{width:16px;height:16px;accent-color:var(--accent)}
+  .danger{color:var(--err);border-color:#6b3b46}
+  .danger:hover{background:#3a2029;border-color:var(--err)}
 </style>
 </head>
 <body>
@@ -71,6 +85,7 @@
     <div class="title"><b>Olivia · 奥莉薇娅</b><small>你的私人塔罗咨询师</small></div>
     <div class="spacer"></div>
     <span class="chip" id="backendChip">未配置</span>
+    <button id="memoryBtn">记忆</button>
     <button id="settingsBtn">设置</button>
     <button id="newBtn">新对话</button>
   </header>
@@ -126,6 +141,28 @@
       <button id="closeBtn">取消</button>
       <button class="primary" id="saveBtn">保存</button>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="memOverlay">
+  <div class="sheet">
+    <h2>记忆管理</h2>
+    <p class="desc">Olivia 记住的关于你的信息只存在本机 <code>agent/data/memory.db</code>。你可以在这里查看、固定、删除或全部清空。</p>
+    <label class="switch"><input type="checkbox" id="memEnabled"> 启用长期记忆</label>
+    <div class="mem-tabs">
+      <button data-tab="facts" class="active">线索</button>
+      <button data-tab="draws">抽牌历史</button>
+      <button data-tab="profile">画像</button>
+    </div>
+    <div class="mem-list" id="memList">加载中…</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button id="memAddBtn">＋ 添加线索</button>
+      <button id="memTidyBtn">整理去重</button>
+      <button id="memForgetBtn">忘掉最近 3 条</button>
+      <button class="danger" id="memClearBtn">清空全部</button>
+    </div>
+    <div class="status" id="memStatus"></div>
+    <div class="actions"><button class="primary" id="memCloseBtn">完成</button></div>
   </div>
 </div>
 
@@ -259,6 +296,114 @@ input.addEventListener('keydown', e => {
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
 });
 input.addEventListener('input', () => { input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,160)+'px'; });
+
+/* ---------------- memory panel ---------------- */
+let memTab = 'facts';
+let memData = null;
+
+async function loadMemory(){
+  try{
+    const r = await fetch('/api/memory'); const d = await r.json();
+    memData = d;
+    $('memEnabled').checked = d.enabled !== false;
+    renderMem();
+  }catch(e){ $('memList').textContent = '加载失败：'+e; }
+}
+
+function renderMem(){
+  if(!memData) return;
+  const list = $('memList'); list.innerHTML='';
+  const mk = (tag, text, when, buttons) => {
+    const el = document.createElement('div'); el.className='mem-item';
+    const g = document.createElement('div'); g.className='grow';
+    if(tag){ const t=document.createElement('span'); t.className='tag'; t.textContent=tag; g.appendChild(t); }
+    g.appendChild(document.createTextNode(text));
+    if(when){ const w=document.createElement('span'); w.className='when'; w.textContent=when; g.appendChild(w); }
+    el.appendChild(g);
+    buttons.forEach(b => { const btn=document.createElement('button'); btn.textContent=b.label; btn.onclick=b.fn; el.appendChild(btn); });
+    return el;
+  };
+  const call = async (op, extra) => {
+    const body = Object.assign({op}, extra||{});
+    const r = await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    memData = await r.json(); renderMem();
+  };
+
+  if(memTab === 'facts'){
+    const facts = memData.facts||[];
+    if(!facts.length){ list.innerHTML='<div class="mem-empty">还没有记住任何线索。正常聊天时会自动提取，也可以手动添加。</div>'; return; }
+    facts.forEach(f => {
+      const when = (f.created_at||'').slice(0,16) + (f.pinned?' · 已固定':'');
+      list.appendChild(mk(f.kind, f.text, when, [
+        {label: f.pinned?'取消固定':'固定', fn:()=>call(f.pinned?'unpin':'pin',{id:f.id})},
+        {label:'删除', fn:()=>call('delete_fact',{id:f.id})}
+      ]));
+    });
+  } else if(memTab === 'draws'){
+    const draws = memData.draws||[];
+    if(!draws.length){ list.innerHTML='<div class="mem-empty">还没有抽牌记录。和 Olivia 抽牌后会自动记在这里。</div>'; return; }
+    draws.forEach(d => {
+      const cards = (d.cards||[]).map(c=>c.name+(c.reversed?'逆位':'正位')).join('、');
+      const text = '['+d.spread+'] '+cards+'　问：'+(d.question||'—');
+      list.appendChild(mk('抽牌', text, d.created_at, [
+        {label:'删除', fn:()=>call('delete_draw',{id:d.id})}
+      ]));
+    });
+  } else {
+    const prof = memData.profile||[];
+    if(!prof.length){ list.innerHTML='<div class="mem-empty">还没有稳定画像。告诉 Olivia「我叫X」就会记在这里。</div>'; return; }
+    prof.forEach(p => {
+      list.appendChild(mk('画像', p.key+'：'+p.value, p.updated_at, [
+        {label:'删除', fn:()=>call('profile_delete',{key:p.key})}
+      ]));
+    });
+  }
+}
+
+$('memoryBtn').onclick = () => { $('memOverlay').classList.add('show'); loadMemory(); };
+$('memCloseBtn').onclick = () => { $('memOverlay').classList.remove('show'); };
+document.querySelectorAll('.mem-tabs button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('.mem-tabs button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); memTab = b.dataset.tab; renderMem();
+  };
+});
+$('memEnabled').onchange = async e => {
+  const r = await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'toggle',enabled:e.target.checked})});
+  memData = await r.json();
+  $('memStatus').className='status ok'; $('memStatus').textContent = e.target.checked?'记忆已开启':'记忆已关闭（不会读取或写入）';
+};
+$('memAddBtn').onclick = async () => {
+  const text = prompt('要记住什么？（例如：我对咖啡因敏感）');
+  if(!text) return;
+  const r = await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'add_fact',kind:'fact',text})});
+  memData = await r.json(); renderMem();
+};
+$('memTidyBtn').onclick = async () => {
+  // lightweight "dreaming": collapse exact-duplicate facts, keep one
+  const facts = (memData&&memData.facts)||[];
+  const seen = {}; const dups = [];
+  facts.forEach(f => { const k=(f.kind+'|'+f.text).trim(); if(seen[k]) dups.push(f.id); else seen[k]=f.id; });
+  for(const id of dups){ await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'delete_fact',id})}); }
+  const r = await fetch('/api/memory'); memData = await r.json(); renderMem();
+  $('memStatus').className='status ok'; $('memStatus').textContent = '整理完成，合并了 '+dups.length+' 条重复。';
+};
+$('memForgetBtn').onclick = async () => {
+  const r = await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'forget_recent',n:3})});
+  memData = await r.json(); renderMem();
+  $('memStatus').className='status ok'; $('memStatus').textContent = '已忘掉最近 3 条线索。';
+};
+$('memClearBtn').onclick = async () => {
+  if(!confirm('确定清空全部记忆？此操作不可撤销。')) return;
+  const r = await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'clear'})});
+  memData = await r.json(); renderMem();
+  $('memStatus').className='status ok'; $('memStatus').textContent = '已清空全部记忆。';
+};
 
 loadConfig();
 </script>
