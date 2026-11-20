@@ -43,17 +43,57 @@
   .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
   .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
   .tool-badge{display:inline-block;font-size:12px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
-  /* ---- 抽牌结果：牌面图 + 牌位 ---- */
-  .draw-block{margin:2px 0 10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
-  .draw-card{width:92px;display:flex;flex-direction:column;gap:5px}
-  .draw-card .pos{font-size:12px;color:#b9a7dc;line-height:1.3;text-align:center;word-break:break-word}
-  .draw-card .face{position:relative;width:92px;height:157px;border-radius:8px;overflow:hidden;background:rgba(120,90,170,.12);border:1px solid rgba(150,115,205,.3)}
-  .draw-card .face img{width:100%;height:100%;object-fit:cover;display:block}
-  .draw-card .face.rev img{transform:rotate(180deg)}
-  .draw-card .tip{font-size:12px;color:#d9cdf2;text-align:center;line-height:1.35}
-  .draw-card .tip .rev-tag{color:#ffb4c8}
-  .draw-head{font-size:12px;color:#c9b6ef;margin:0 0 6px}
+  /* ---- 抽牌结果：按牌阵真实几何摆位 + 悬停看牌位名 ---- */
+  .draw-wrap{margin:2px 0 12px;text-align:center}
+  .draw-head{font-size:12px;color:#c9b6ef;margin:0 0 9px;text-align:left}
   .draw-head b{color:#efe6ff;font-weight:600}
+  .draw-head span{display:block;margin-top:3px;color:#a99ac9;line-height:1.5}
+  .draw-scroll{display:flex;justify-content:center;padding:2px 0 6px}
+  .draw-board{--cw:86px;--gs:1;display:grid;row-gap:calc(var(--gy,9px) * var(--gs));column-gap:calc(var(--gx,8px) * var(--gs));justify-items:center;align-items:start;margin:0;width:max-content;max-width:100%}
+  .draw-board.wide{--cw:60px;--gy:12px;--gx:16px}
+  .draw-slot{width:var(--cw);display:flex;flex-direction:column;gap:4px;align-items:center;position:relative;outline:0}
+  .draw-slot .facebox{position:relative;width:100%;aspect-ratio:420/727}
+  .draw-slot .face{position:absolute;inset:0;border-radius:8px;overflow:hidden;background:rgba(120,90,170,.12);border:1px solid rgba(150,115,205,.3);box-shadow:0 3px 10px rgba(0,0,0,.35);transition:border-color .14s}
+  .draw-slot:hover,.draw-slot:focus-within,.draw-slot.open{z-index:9}
+  .draw-slot:hover .face,.draw-slot:focus-within .face,.draw-slot.open .face{border-color:rgba(200,165,255,.62)}
+  .draw-slot .face img{width:100%;height:100%;object-fit:cover;display:block}
+  .draw-slot .face.rev img{transform:rotate(180deg)}
+  .draw-slot .face.rot{inset:auto;left:50%;top:50%;width:calc(var(--cw) * .70);height:calc(var(--cw) * 1.18);transform:translate(-50%,-50%) rotate(90deg)}
+  .draw-slot .num{position:absolute;top:4px;left:4px;z-index:3;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:rgba(16,10,28,.86);border:1px solid rgba(190,160,255,.5);color:#f0e8ff;font-size:12px;line-height:17px;text-align:center;font-weight:600;box-sizing:border-box}
+  /* 牌位名浮窗：从牌的一侧浮出来，不压在牌面上 */
+  .draw-slot .poslay{position:absolute;top:0;left:calc(100% + 8px);z-index:8;width:178px;max-width:min(178px, 58vw);padding:7px 9px;border-radius:9px;background:rgba(18,12,30,.97);border:1px solid rgba(150,115,205,.42);box-shadow:0 8px 22px rgba(0,0,0,.5);opacity:0;visibility:hidden;transform:translateX(-4px);transition:opacity .14s,transform .14s,visibility .14s;pointer-events:none;text-align:left}
+  .draw-slot.tip-l .poslay{left:auto;right:calc(100% + 9px);transform:translateX(4px)}
+  .draw-slot:hover .poslay,.draw-slot:focus-within .poslay,.draw-slot.open .poslay{opacity:1;visibility:visible;transform:translateX(0)}
+  .draw-slot .poslay::before{content:"";position:absolute;top:11px;left:-5px;width:8px;height:8px;background:rgba(18,12,30,.97);border-left:1px solid rgba(150,115,205,.42);border-bottom:1px solid rgba(150,115,205,.42);transform:rotate(45deg)}
+  .draw-slot.tip-l .poslay::before{left:auto;right:-5px;transform:rotate(225deg)}
+  .draw-slot .poslay b{display:block;font-size:12px;color:#f2ebff;line-height:1.35;font-weight:600;word-break:break-word}
+  .draw-slot .poslay span{display:block;font-size:12px;color:#cbbfe6;line-height:1.5;margin-top:3px;word-break:break-word}
+  .draw-slot .poslay .cd{margin-top:4px;padding-top:4px;border-top:1px solid rgba(150,115,205,.28);color:#e4d9f7}
+  .draw-slot .tip{font-size:12px;color:#d9cdf2;text-align:center;line-height:1.3;width:100%;word-break:keep-all;overflow-wrap:anywhere}
+  .draw-slot .tip .nm{display:block;color:#e4d9f7}
+  .draw-slot .tip .or{display:block;font-size:12px;color:#a99ac9;margin-top:1px}
+  .draw-slot .tip .or.rev{color:#ffb4c8}
+  .draw-slot .tip .rev-tag{color:#ffb4c8}
+  /* 横躺的那一张（凯尔特十字的「阻碍」）：宽高对调，压在中心牌上 */
+  .draw-slot.cross{z-index:6;width:auto;flex-direction:row;align-self:center;justify-self:center}
+  .draw-slot.cross .facebox{width:calc(var(--cw) * 1.18);height:calc(var(--cw) * .96);aspect-ratio:auto;flex:0 0 auto}
+  .draw-slot.cross .tip{display:none}
+  .draw-slot.cross .face{border-color:rgba(216,170,255,.6);box-shadow:0 6px 18px rgba(0,0,0,.6)}
+  .draw-slot.cross .num{top:3px;left:3px}
+  .draw-legend{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;gap:4px;text-align:left}
+  .draw-legend summary{display:block;padding:7px 0;font-size:12px;color:#bfaee2;cursor:pointer;outline:0;list-style:none}
+  .draw-legend summary::-webkit-details-marker{display:none}
+  .draw-legend summary::before{content:"\25B8\00A0\00A0";color:#8e78b8}
+  .draw-legend[open] summary::before{content:"\25BE\00A0\00A0"}
+  .draw-legend summary:hover{color:#efe6ff}
+  .draw-legend .lg{font-size:12px;color:#a99ac9;line-height:1.55;display:flex;gap:7px;margin-top:5px}
+  .draw-legend .lg i{color:#8e78b8;font-style:normal;min-width:16px;text-align:right;flex:0 0 auto}
+  .draw-legend .lg span{color:#c8bce4;flex:1 1 auto;min-width:0;word-break:break-word;overflow-wrap:anywhere}
+  .draw-legend .lg b{color:#e6dcfa;font-weight:600}
+  @media (max-width:900px){ .draw-board{--cw:74px;--gs:.92} .draw-board.wide{--cw:52px;--gs:.8} .draw-slot .poslay{width:158px} }
+  @media (max-width:760px){ .draw-board{--cw:62px;--gs:.72} .draw-board.wide{--cw:44px;--gs:.62} .draw-slot .poslay{width:142px} }
+  @media (max-width:520px){ .draw-board{--cw:54px;--gs:.5} .draw-board.wide{--cw:40px;--gs:.42} .draw-slot .poslay{width:154px;max-width:min(154px, 62vw);padding:6px 8px} }
+
   .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:12px;background:var(--badge);color:#fff;font-size:12px;line-height:18px;text-align:center}
   .care-row{padding:9px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
   .care-row .t{font-size:13px;font-weight:600}
@@ -413,26 +453,95 @@ function escAttr(s){ return escHtml(s); }
 function renderCards(inner, bub, data){
   const items = (data && data.items) || [];
   if(!items.length) return;
+  const lay = (data && data.layout) || {cols: items.length, rows: 1,
+    cells: items.map((_, i) => [i + 1, 1])};
+  const cols = Math.max(1, lay.cols|0), rows = Math.max(1, lay.rows|0);
+  const cells = Array.isArray(lay.cells) ? lay.cells : [];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'draw-wrap';
+
   const head = document.createElement('div');
   head.className = 'draw-head';
-  head.innerHTML = '<b>'+escHtml(data.spread||'抽牌')+'</b>　' + items.length + ' 张';
-  inner.insertBefore(head, bub);
-  const block = document.createElement('div');
-  block.className = 'draw-block';
-  items.forEach(c => {
-    const card = document.createElement('div');
-    card.className = 'draw-card';
-    const img = c.image ? ('<img src="'+escAttr(c.image)+'" alt="'+escAttr(c.name)+'" loading="lazy">') : '';
+  head.innerHTML = '<b>' + escHtml(data.spread || '抽牌') + '</b>　' + items.length + ' 张' +
+    (data.spread_desc ? '　<span>' + escHtml(data.spread_desc) + '</span>' : '');
+  wrap.appendChild(head);
+
+  const scroll = document.createElement('div');
+  scroll.className = 'draw-scroll';
+  const board = document.createElement('div');
+  board.className = 'draw-board' + (cols >= 6 ? ' wide' : '');
+  board.style.gridTemplateColumns = 'repeat(' + cols + ', var(--cw))';
+  if (lay.gap && lay.gap.length === 2) {
+    board.style.setProperty('--gy', (Number(lay.gap[0]) || 0) + 'px');
+    board.style.setProperty('--gx', (Number(lay.gap[1]) || 0) + 'px');
+  }
+  scroll.appendChild(board);
+  wrap.appendChild(scroll);
+
+  items.forEach((c, i) => {
+    const cell = cells[i] || [i + 1, 1];
+    const rot = Number(cell[2]) === 90;
+    const slot = document.createElement('div');
+    slot.className = 'draw-slot' + (rot ? ' cross' : '');
+    const col = Math.max(1, Math.min(cols, Number(cell[0]) || 1));
+    const row = Math.max(1, Math.min(rows, Number(cell[1]) || 1));
+    slot.style.gridColumn = String(col);
+    slot.style.gridRow = String(row);
+    // 右半边的牌，浮窗朝左开，免得顶出容器
+    if (col > cols / 2) slot.classList.add('tip-l');
+    slot.tabIndex = 0;                        // 键盘 Tab 聚焦也能看到牌位名
+    if (rot) {
+      // 横躺的牌（凯尔特十字的「阻碍」）：宽高对调、压在中心那张上
+      slot.style.zIndex = '6';
+    }
+    const img = c.image
+      ? '<img src="' + escAttr(c.image) + '" alt="' + escAttr(c.name || '') + '" loading="lazy">'
+      : '';
     const rev = c.orientation === '逆位' ? ' rev' : '';
-    card.innerHTML =
-      '<div class="pos">'+escHtml(c.position||'')+'</div>'+
-      '<div class="face'+rev+'">'+img+'</div>'+
-      '<div class="tip">'+escHtml(c.name||'')+
-        (c.orientation ? '<br><span class="rev-tag">'+escHtml(c.orientation)+'</span>' : '')+
+    // 牌面上只留序号；牌位名要鼠标移上去才显示，移开就消失
+    slot.innerHTML =
+      '<div class="facebox">' +
+        '<div class="face' + rev + (rot ? ' rot' : '') + '">' + img + '</div>' +
+        '<span class="num">' + (i + 1) + '</span>' +
+        '<div class="poslay"><b>' + escHtml(c.position || '') + '</b>' +
+          (c.position_meaning ? '<span>' + escHtml(c.position_meaning) + '</span>' : '') +
+          (rot ? '<span class="cd">' + escHtml(c.name || '') +
+                 (c.orientation ? '　' + escHtml(c.orientation) : '') + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="tip">' +
+        (rot
+          ? '<span class="nm">' + escHtml(c.name || '') + '</span><span class="or' + (rev ? ' rev' : '') + '">　' + escHtml(c.orientation || '') + '</span>'
+          : '<span class="nm">' + escHtml(c.name || '') + '</span>' +
+            (c.orientation ? '<span class="or' + (rev ? ' rev' : '') + '">' + escHtml(c.orientation) + '</span>' : '')) +
       '</div>';
-    block.appendChild(card);
+    // 触屏没有悬停：点一下显示牌位名，再点收起
+    slot.addEventListener('click', function(){
+      slot.classList.toggle('open');
+    });
+    board.appendChild(slot);
   });
-  inner.insertBefore(block, bub);
+
+  // 牌位表：默认收起，想一次看全所有位置在问什么时再展开
+  const legend = document.createElement('details');
+  legend.className = 'draw-legend';
+  const sum = document.createElement('summary');
+  sum.textContent = '牌位表（点开看 ' + items.length + ' 个位置各自在问什么）';
+  legend.appendChild(sum);
+  items.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'lg';
+    row.innerHTML = '<i>' + (i + 1) + '</i><span><b>' + escHtml(c.position || '') + '</b>' +
+      (c.position_meaning ? '　' + escHtml(c.position_meaning) : '') +
+      '　→ ' + escHtml(c.name || '') +
+      (c.orientation ? '（' + escHtml(c.orientation) + '）' : '') +
+      '</span>';
+    legend.appendChild(row);
+  });
+  wrap.appendChild(legend);
+
+  inner.insertBefore(wrap, bub);
 }
 
 async function loadConfig(){

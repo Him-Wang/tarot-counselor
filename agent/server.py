@@ -375,6 +375,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "spread": result.get("spread", ""),
                                     "spread_desc": result.get("spread_desc", ""),
                                     "question": result.get("question", ""),
+                                    "layout": result.get("layout") or spreads_mod.layout(result.get("spread", "")),
                                     "items": [{
                                         "position": c.get("position", ""),
                                         "position_meaning": c.get("position_meaning", ""),

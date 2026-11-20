@@ -211,6 +211,7 @@ def draw_cards(spread="三张", question=""):
         "spread": spread,
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
+        "layout": spreads_mod.layout(spread),
         "cards": cards,
         "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
                 "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
