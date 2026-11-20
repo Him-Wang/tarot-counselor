@@ -11,6 +11,7 @@ import re
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
 KNOWLEDGE_DIR = os.path.join(REPO_DIR, "knowledge")
+MEANINGS_DIR = os.path.join(KNOWLEDGE_DIR, "meanings")
 
 # stop tokens that carry little topic signal
 STOP = set("的 了 和 是 在 我 你 他 她 它 们 这 那 有 就 不 也 都 而 及 与 或 一个 什么 怎么 怎么 一些 可以 需要 是否 请 帮 我想 觉得 因为 所以 但是 如果 已经 还是 现在 自己".split())
@@ -102,3 +103,63 @@ def retrieve(query, top_k=3, max_chars=9000):
 
 def list_docs():
     return [d["rel"] for d in _read_files()]
+
+
+_MEANINGS_CACHE = {}
+
+
+def _load_meanings():
+    """Parse knowledge/meanings/*.md into {card_name: {'core','正位','逆位'}}."""
+    if _MEANINGS_CACHE:
+        return _MEANINGS_CACHE
+    if not os.path.isdir(MEANINGS_DIR):
+        return _MEANINGS_CACHE
+    import re as _re
+    current = None
+    bucket = None
+    for root, _dirs, files in os.walk(MEANINGS_DIR):
+        for fn in sorted(files):
+            if not fn.lower().endswith(".md"):
+                continue
+            path = os.path.join(root, fn)
+            with open(path, "r", encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if line.startswith("## "):
+                        current = line[3:].strip()
+                        bucket = None
+                        if current:
+                            _MEANINGS_CACHE.setdefault(current, {})
+                        continue
+                    if current is None:
+                        continue
+                    if line.startswith("- 核心："):
+                        _MEANINGS_CACHE[current]["core"] = line[len("- 核心："):].strip()
+                        bucket = None
+                    elif line.startswith("核心："):
+                        _MEANINGS_CACHE[current]["core"] = line[len("核心："):].strip()
+                        bucket = None
+                    elif line.startswith("- 正位："):
+                        _MEANINGS_CACHE[current]["正位"] = line[len("- 正位："):].strip()
+                        bucket = "正位"
+                    elif line.startswith("- 逆位："):
+                        _MEANINGS_CACHE[current]["逆位"] = line[len("- 逆位："):].strip()
+                        bucket = "逆位"
+                    elif bucket and line:
+                        _MEANINGS_CACHE[current][bucket] += " " + line
+    return _MEANINGS_CACHE
+
+
+def get_card_meaning(name, orientation="正位"):
+    """Return the RWS meaning note for a card, or '' if not found."""
+    m = _load_meanings().get(name)
+    if not m:
+        return ""
+    core = m.get("core", "")
+    body = m.get(orientation, "")
+    parts = []
+    if core:
+        parts.append("核心：" + core)
+    if body:
+        parts.append(orientation + "：" + body)
+    return " ".join(parts)

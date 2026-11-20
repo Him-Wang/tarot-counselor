@@ -42,6 +42,8 @@ TOOL_GUIDE = """【可用工具 / 必须遵守】
 - draw_cards(spread, question)：来访者请求抽牌、占卜、看牌时**必须**调用此工具。
   spread 只能是「单张」「三张」「凯尔特十字」。牌面由工具客观随机产生，
   你绝不能自己编牌名、挑牌、换牌，也不能把记忆里的旧牌当作本次牌面。
+  工具会在每张牌上返回传统牌意（核心/正位/逆位）——这是解牌的既定依据，
+  必须依据它来解，按「牌意→牌阵位置→对应问题→落到情境」的顺序，不可自行编造或替换牌意。
 - search_knowledge(query)：需要专业资料（咨询技术、伦理、危机干预）时调用。
 - save_memory(kind, text)：来访者明确表达偏好/边界，或说「请记住」时调用。
 - crisis_check(text)：察觉自伤、安全风险或严重侵害时调用；命中后立即跳出塔罗师角色走安全流程。
@@ -171,17 +173,22 @@ def draw_cards(spread="三张", question=""):
     for pos, idx in zip(positions, indices):
         name = DECK[idx]
         reversed_ = bool(rng.getrandbits(1))
+        orientation = "逆位" if reversed_ else "正位"
         cards.append({
             "position": pos,
             "name": name,
-            "orientation": "逆位" if reversed_ else "正位",
+            "orientation": orientation,
+            # 传统牌意由工具随牌面一并返回，作为解牌的既定依据；
+            # 模型不得自行编造或替换这里的牌意。
+            "meaning": knowledge.get_card_meaning(name, orientation),
         })
     return {
         "ok": True,
         "spread": spread,
         "question": question or "（来访者未明确说明）",
         "cards": cards,
-        "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。",
+        "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
+                "请依据每张牌随附的传统牌意（核心/正位/逆位）解读，不要自行编造牌意。",
     }
 
 
