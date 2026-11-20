@@ -537,6 +537,13 @@ def main():
     port = int(os.environ.get("AGENT_PORT", "8765"))
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     scheduler.start(load_config)
+    # PID 文件：供安装包的 uninstall 精确停止本服务（不误杀其它 python server.py）
+    pid_path = os.path.join(BASE_DIR, "olivia.pid")
+    try:
+        with open(pid_path, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+    except Exception:
+        pid_path = None
     print("Olivia agent running at http://127.0.0.1:%d" % port)
     print("Press Ctrl+C to stop.")
     try:
@@ -545,6 +552,11 @@ def main():
         pass
     finally:
         srv.server_close()
+        if pid_path:
+            try:
+                os.remove(pid_path)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

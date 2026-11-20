@@ -23,3 +23,7 @@ agent/data/
 *.db
 *.db-wal
 *.db-shm
+agent/olivia.pid
+
+# Built installer output
+installer/dist/
