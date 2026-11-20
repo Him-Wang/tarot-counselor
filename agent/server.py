@@ -428,10 +428,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "config": mask(cfg)})
 
         elif p == "/api/test":
-            cfg = load_config()
-            # allow testing with a real key supplied inline in this request;
-            # ignore masked placeholders so they are never sent as a real key
-            cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
+            # Issue #1: the "test connection" button must probe the values
+            # currently shown in the form, not the last saved ones. The UI
+            # posts collectConfig(); overlay every connection-relevant field
+            # from the request WITHOUT persisting anything. A masked key
+            # placeholder falls back to the saved real key.
+            saved = load_config()
+            effective_key = _effective_api_key(saved, body.get("api_key"))
+            cfg = dict(saved)
+            for k in ("backend", "base_url", "api_key", "model", "temperature",
+                      "timeout", "think", "tools_enabled", "memory_enabled",
+                      "prophecy_enabled", "tone_enabled", "two_phase_draw"):
+                if k in body:
+                    cfg[k] = body[k]
+            cfg["api_key"] = effective_key
             try:
                 reply = llm.check(cfg)
                 self._send_json({"ok": True, "reply": reply})
