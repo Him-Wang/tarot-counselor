@@ -123,6 +123,7 @@ if ($auto -match '^[yY]' -and (Test-Path $startup)) {
 } | ConvertTo-Json | Set-Content -Path (Join-Path $target '.install-info.json') -Encoding UTF8
 
 # ---------- 9) 立即启动（问，默认否）+ 打开浏览器（OLIVIA_NO_LAUNCH=1 仅供自动化验证）----------
+$run = Read-Host '是否立即启动并打开浏览器？（y/N，直接回车=否）'
 $runYes = $run -match '^[yY]'
 if ($runYes -and $env:OLIVIA_NO_LAUNCH -ne '1') {
     Start-Process -FilePath $pythonw -ArgumentList ('"' + (Join-Path $target 'agent\server.py') + '"') -WorkingDirectory (Join-Path $target 'agent') -WindowStyle Hidden
