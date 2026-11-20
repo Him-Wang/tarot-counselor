@@ -30,6 +30,9 @@
   button:hover{border-color:var(--accent);background:#2e2842}
   button:disabled{opacity:.5;cursor:not-allowed}
   .chip{font-size:12px;padding:5px 10px;color:var(--muted)}
+  .prophecy-chip{display:none;font-size:11px;padding:4px 9px;color:#ffcf6b;
+    background:rgba(255,190,70,.12);border:1px solid rgba(255,190,70,.4);border-radius:20px;white-space:nowrap}
+  .prophecy-chip.on{display:inline-block}
 
   #chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 4px 4px}
   .msg{display:flex;gap:10px;max-width:88%}
@@ -95,6 +98,7 @@
     <div class="title"><b>Olivia · 奥莉薇娅</b><small>你的私人塔罗咨询师</small></div>
     <div class="spacer"></div>
     <span class="chip" id="backendChip">未配置</span>
+    <span class="prophecy-chip" id="prophecyChip" title="预言模式已开启：解读仅供娱乐">🔮 预言模式 · 仅供娱乐</span>
     <button id="careBtn" title="主动关怀">关怀<span id="careBadge" class="care-badge" hidden>0</span></button>
     <button id="kbBtn">知识库</button>
     <button id="memoryBtn">记忆</button>
@@ -146,6 +150,8 @@
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
     <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（抽牌/检索/记忆/知识库/危机检查）</label>
+    <label class="switch"><input type="checkbox" id="prophecyEnabled"> 🔮 预言模式 <span style="color:#ffcf6b">（仅供娱乐，可随时开关）</span></label>
+    <p class="desc" style="margin:-6px 0 12px;font-size:12px">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
 
     <details style="margin:14px 0;border-top:1px solid var(--line);padding-top:12px">
       <summary style="cursor:pointer;color:#c9b6ef">👁 视觉识别插件（云端 VLM，选填）</summary>
@@ -366,6 +372,8 @@ async function loadConfig(){
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
   $('toolsEnabled').checked = c.tools_enabled !== false;
+  $('prophecyEnabled').checked = c.prophecy_enabled === true;
+  $('prophecyChip').classList.toggle('on', c.prophecy_enabled === true);
   $('presetNote').textContent = PRESET_NOTE[c.backend] || '';
   $('backendChip').textContent = (c.backend||'?') + (c.api_key_set||c.backend==='ollama' ? ' · 就绪' : ' · 待填 key');
   $('docList').textContent = d.docs && d.docs.length ? d.docs.join('\n') : '（knowledge/ 目录还是空的）';
@@ -384,6 +392,10 @@ $('newBtn').onclick = () => {
   addMsg('assistant','新的一页。这次，你想从哪里说起？');
 };
 
+$('prophecyEnabled').addEventListener('change', e => {
+  $('prophecyChip').classList.toggle('on', e.target.checked);
+});
+
 function collectConfig(){
   return {
     backend: $('preset').value,
@@ -392,7 +404,8 @@ function collectConfig(){
     api_key: $('apiKey').value.trim(),
     temperature: parseFloat($('temp').value)||0.8,
     timeout: parseInt($('timeout').value)||120,
-    tools_enabled: $('toolsEnabled').checked
+    tools_enabled: $('toolsEnabled').checked,
+    prophecy_enabled: $('prophecyEnabled').checked
   };
 }
 

@@ -33,6 +33,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PERSONA_PATH = os.path.join(REPO_DIR, "prompts", "persona.zh.md")
+PROPHECY_PATH = os.path.join(REPO_DIR, "prompts", "prophecy.zh.md")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 
 PRESETS = {
@@ -85,6 +86,7 @@ DEFAULT_CONFIG = {
     "timeout": 120,
     "tools_enabled": True,
     "memory_enabled": True,
+    "prophecy_enabled": False,
 }
 
 
@@ -110,6 +112,15 @@ def load_persona():
             return f.read().strip()
     except Exception:
         return "你是一名沉稳、专业的塔罗咨询师 Olivia（奥莉薇娅）。"
+
+
+def load_prophecy():
+    """预言模式覆盖层（仅供娱乐），仅在开启时加载。"""
+    try:
+        with open(PROPHECY_PATH, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
 
 
 def mask(cfg):
@@ -198,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/config":
             cfg = load_config()
             for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout",
-                      "think", "tools_enabled", "memory_enabled"):
+                      "think", "tools_enabled", "memory_enabled", "prophecy_enabled"):
                 if k in body:
                     cfg[k] = body[k]
             # don't overwrite a saved key with the masked display string
@@ -250,6 +261,11 @@ class Handler(BaseHTTPRequestHandler):
             # retrieve relevant knowledge for this turn
             context, used = knowledge.retrieve(message)
             system = load_persona()
+            # 预言模式（仅供娱乐）：手动开启时才追加覆盖层，安全边界不放开
+            if cfg.get("prophecy_enabled", False):
+                prophecy = load_prophecy()
+                if prophecy:
+                    system += "\n\n---\n" + prophecy
             if context:
                 system += (
                     "\n\n---\n以下是与本次对话相关的专业资料，回答专业判断时以这些资料为准，"
