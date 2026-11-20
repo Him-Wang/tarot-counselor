@@ -330,6 +330,38 @@
 <script>
 const $ = id => document.getElementById(id);
 const chat = $('chat'), input = $('input');
+
+/* ---------- 后端连通性：把非 JSON 响应转成看得懂的提示 ---------- */
+/* 直接用浏览器打开 index.html（file://）或页面不是由 python server.py 提供时，
+   /api/* 会返回纯文本（如 "method not allowed"），r.json() 只会抛出
+   SyntaxError，用户看到的是一堆英文。这里统一换成能照着做的中文提示。 */
+const BACKEND_HINT = '请先运行 agent/start.bat（或 python server.py）启动服务，再从 http://127.0.0.1:8765 打开本页。';
+function backendHint(status, body){
+  if (location.protocol === 'file:') return '这个页面是直接打开的文件，没有连上 Olivia 本地服务。' + BACKEND_HINT;
+  if (/method not allowed/i.test(body || '')) return '当前页面不是由 Olivia 服务提供的（静态服务器不接受接口请求）。' + BACKEND_HINT;
+  if (status === 0) return '连不上 Olivia 本地服务。' + BACKEND_HINT;
+  if (status === 404) return '这个地址上没有 Olivia 的接口。' + BACKEND_HINT;
+  return 'Olivia 本地服务返回了异常响应（HTTP ' + status + '）。' + BACKEND_HINT;
+}
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  let res;
+  try {
+    res = await _rawFetch(input, init);
+  } catch (err) {
+    // file:// 直接打开、或服务没起，网络层就失败了
+    if (url.indexOf('/api/') >= 0) throw new Error(backendHint(0, ''));
+    throw err;
+  }
+  if (url.indexOf('/api/') < 0) return res;
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  // JSON 接口和 /api/chat 的 SSE 流都是正常响应，原样放行
+  if (ct.indexOf('application/json') >= 0 || ct.indexOf('text/event-stream') >= 0) return res;
+  let body = '';
+  try { body = (await res.clone().text()).trim().slice(0, 80); } catch (_) {}
+  throw new Error(backendHint(res.status, body));
+};
 let history = [];
 let streaming = false;
 let pendingImages = [];  // data URLs queued for the next message
@@ -361,7 +393,16 @@ function addMsg(role, text){
 }
 
 async function loadConfig(){
-  const r = await fetch('/api/config'); const d = await r.json();
+  let d;
+  try {
+    const r = await fetch('/api/config'); d = await r.json();
+  } catch(e) {
+    const msg = (e && e.message) || String(e);
+    const doc = $('docList'); if (doc) doc.textContent = msg;
+    const st = $('testStatus'); if (st) { st.className = 'status err'; st.textContent = msg; }
+    const chip = $('backendChip'); if (chip) chip.textContent = '未连接';
+    return;
+  }
   const c = d.config;
   // 旧配置里的 'deepseek' 别名映射到新的 deepseek-chat 预设
   if (c.backend === 'deepseek') c.backend = 'deepseek-chat';
@@ -593,7 +634,16 @@ $('memClearBtn').onclick = async () => {
 // ---------- 主动关怀 (L3 always-on) ----------
 let careData = null;
 async function loadCare(silent){
-  const r = await fetch('/api/schedule'); careData = await r.json();
+  try {
+    const r = await fetch('/api/schedule'); careData = await r.json();
+  } catch(e) {
+    const msg = (e && e.message) || String(e);
+    const l = $('taskList'); if (l) l.textContent = msg;
+    const o = $('outboxList'); if (o) o.textContent = msg;
+    const wl = $('watcherList'); if (wl) wl.textContent = msg;
+    const wg = $('watchLog'); if (wg) wg.textContent = msg;
+    return;
+  }
   const s = careData.status||{};
   $('careMaster').checked = !!s.master;
   $('quietStart').value = s.quiet_start||'22:00';
@@ -788,7 +838,16 @@ $('imgInput').onchange = async e => {
 /* ---------- 个人知识库 ---------- */
 let kbData=null;
 async function loadKB(){
-  const d=await (await fetch('/api/plugins')).json(); kbData=d; renderKB();
+  let d;
+  try {
+    d = await (await fetch('/api/plugins')).json();
+  } catch(e) {
+    const msg = (e && e.message) || String(e);
+    const l = $('kbList'); if (l) l.textContent = msg;
+    const vs = $('visionStatus'); if (vs) { vs.className = 'status err'; vs.textContent = msg; }
+    return;
+  }
+  kbData=d; renderKB();
   $('visionEnabled').checked=!!(d.vision&&d.vision.config.enabled);
   const vc=d.vision&&d.vision.config||{};
   $('visionBase').value=vc.base_url||''; $('visionModel').value=vc.model||'';
