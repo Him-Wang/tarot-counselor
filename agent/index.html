@@ -45,7 +45,11 @@
   .care-row .s{font-size:11px;color:var(--muted);margin-top:3px}
   .care-row .c{font-size:13px;color:var(--ink);margin-top:6px;white-space:pre-wrap}
 
-  .composer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px;display:flex;gap:10px;align-items:flex-end}
+  .composer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px}
+  .img-btn{padding:8px 10px;border:1px solid var(--line);border-radius:10px;line-height:1}
+  .img-thumb{position:relative}
+  .img-thumb img{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .img-thumb span{position:absolute;top:-6px;right:-6px;background:#e0547a;color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer}
   textarea{flex:1;resize:none;background:transparent;border:0;outline:0;color:var(--ink);font:inherit;min-height:44px;max-height:160px;padding:6px}
   textarea::placeholder{color:#6f6786}
   .send{background:linear-gradient(135deg,var(--accent),#9a6bff);border:0;color:#150d24;font-weight:600;padding:10px 18px;flex:0 0 auto}
@@ -92,6 +96,7 @@
     <div class="spacer"></div>
     <span class="chip" id="backendChip">未配置</span>
     <button id="careBtn" title="主动关怀">关怀<span id="careBadge" class="care-badge" hidden>0</span></button>
+    <button id="kbBtn">知识库</button>
     <button id="memoryBtn">记忆</button>
     <button id="settingsBtn">设置</button>
     <button id="newBtn">新对话</button>
@@ -102,8 +107,12 @@
   </div>
 
   <div class="composer">
-    <textarea id="input" placeholder="说说你的心事……（Enter 发送，Shift+Enter 换行）"></textarea>
-    <button class="send" id="sendBtn">发送</button>
+    <div id="imgPreview" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div class="composer-row" style="display:flex;gap:8px;align-items:center">
+      <label class="img-btn" title="附图（需配置云端视觉模型）" style="cursor:pointer;font-size:18px;color:#c9b6ef">＋图<input id="imgInput" type="file" accept="image/*" multiple hidden></label>
+      <textarea id="input" placeholder="说说你的心事……（Enter 发送，Shift+Enter 换行）" style="flex:1"></textarea>
+      <button class="send" id="sendBtn">发送</button>
+    </div>
   </div>
 </div>
 
@@ -136,7 +145,29 @@
       <div class="field"><label>temperature</label><input id="temp" type="number" step="0.1" value="0.8"></div>
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
-    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（抽牌/检索/记忆/危机检查）</label>
+    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（抽牌/检索/记忆/知识库/危机检查）</label>
+
+    <details style="margin:14px 0;border-top:1px solid var(--line);padding-top:12px">
+      <summary style="cursor:pointer;color:#c9b6ef">👁 视觉识别插件（云端 VLM，选填）</summary>
+      <p class="desc" style="margin:8px 0">纯文本模型也能"看图"：填一个云端视觉模型的 key，图片先转成文字描述再交给主模型。<b>不依赖本地模型</b>。密钥只存本机。</p>
+      <label class="switch"><input type="checkbox" id="visionEnabled"> 启用视觉识别</label>
+      <div class="field"><label>视觉 API 预设</label>
+        <select id="visionPreset">
+          <option value="custom">自定义（OpenAI 兼容）</option>
+          <option value="openai">OpenAI (gpt-4o-mini)</option>
+          <option value="qwen">通义千问 VL</option>
+          <option value="glm">智谱 GLM-4V</option>
+          <option value="moonshot">Moonshot 视觉</option>
+        </select>
+      </div>
+      <div class="field"><label>接口地址</label><input id="visionBase" placeholder="https://api.openai.com/v1"></div>
+      <div class="row">
+        <div class="field"><label>视觉模型</label><input id="visionModel" placeholder="gpt-4o-mini"></div>
+        <div class="field"><label>API key</label><input id="visionKey" type="password" placeholder="留空则不覆盖"></div>
+      </div>
+      <div class="status" id="visionStatus"></div>
+      <button id="visionSaveBtn" style="margin-top:8px">保存视觉设置</button>
+    </details>
 
     <div class="status" id="testStatus"></div>
     <div class="field" style="margin-top:14px">
@@ -171,6 +202,26 @@
     </div>
     <div class="status" id="memStatus"></div>
     <div class="actions"><button class="primary" id="memCloseBtn">完成</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="kbOverlay">
+  <div class="sheet">
+    <h2>个人知识库 · 归档</h2>
+    <p class="desc">长期保存重要笔记、清单与决定，本机 <code>agent/data/kb.db</code>。聊天里说"记到知识库"会自动归档，也能在这里手动管理；Olivia 会在相关时自然引用。</p>
+    <div class="mem-list" id="kbList">加载中…</div>
+    <div class="row" style="margin-top:12px">
+      <div class="field"><label>标题</label><input id="kbTitle" placeholder="例如：我的边界清单"></div>
+      <div class="field"><label>标签</label><input id="kbTags" placeholder="健康, 工作"></div>
+    </div>
+    <div class="field"><label>内容</label><textarea id="kbContent" placeholder="要归档的内容……" style="border:1px solid var(--line);border-radius:8px"></textarea></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button id="kbAddBtn" class="primary">＋ 添加笔记</button>
+      <button id="kbArchiveBtn">从记忆归档</button>
+      <button id="kbExportBtn">导出 Markdown</button>
+    </div>
+    <div class="status" id="kbStatus"></div>
+    <div class="actions"><button class="primary" id="kbCloseBtn">完成</button></div>
   </div>
 </div>
 
@@ -221,6 +272,7 @@ const $ = id => document.getElementById(id);
 const chat = $('chat'), input = $('input');
 let history = [];
 let streaming = false;
+let pendingImages = [];  // data URLs queued for the next message
 
 const PRESET_NOTE = {
   'deepseek-flash': 'DeepSeek V4.1-Flash：快、便宜，默认带思考。填自己的 API key（platform.deepseek.com）。',
@@ -311,16 +363,25 @@ $('testBtn').onclick = async () => {
 
 async function send(){
   if(streaming) return;
-  const text = input.value.trim(); if(!text) return;
-  input.value=''; addMsg('user', text);
-  history.push({role:'user',content:text});
+  const text = input.value.trim();
+  if(!text && !pendingImages.length) return;
+  input.value='';
+  const imgs = pendingImages.slice(); pendingImages=[]; renderImages();
+  const shown = text || '（发来一张图片）';
+  const um = addMsg('user', shown);
+  if(imgs.length){
+    const strip=document.createElement('div'); strip.style.cssText='display:flex;gap:6px;margin-top:6px';
+    imgs.forEach(src=>{const im=document.createElement('img');im.src=src;im.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:8px';strip.appendChild(im)});
+    um.bub.appendChild(strip);
+  }
+  history.push({role:'user',content:shown});
   const {bub, inner} = addMsg('assistant','');
   const meta = document.createElement('div'); meta.className='meta-line';
   inner.insertBefore(meta, bub);
   streaming = true; $('sendBtn').disabled=true;
   let full='';
   try{
-    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1)})});
+    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1),images:imgs})});
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf='';
     while(true){
@@ -559,7 +620,100 @@ $('outboxReadBtn').onclick = async () => {
   await loadCare(true);
 };
 
+/* ---------- 图片附件 ---------- */
+function dataURL(file){
+  return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); });
+}
+function renderImages(){
+  const box=$('imgPreview'); box.innerHTML='';
+  if(!pendingImages.length){ box.style.display='none'; return; }
+  box.style.display='flex';
+  pendingImages.forEach((src,i)=>{
+    const th=document.createElement('div'); th.className='img-thumb';
+    const im=document.createElement('img'); im.src=src;
+    const x=document.createElement('span'); x.textContent='×'; x.onclick=()=>{pendingImages.splice(i,1);renderImages();};
+    th.appendChild(im); th.appendChild(x); box.appendChild(th);
+  });
+}
+$('imgInput').onchange = async e => {
+  for(const f of e.target.files){ if(pendingImages.length>=3) break; pendingImages.push(await dataURL(f)); }
+  e.target.value=''; renderImages();
+};
+
+/* ---------- 个人知识库 ---------- */
+let kbData=null;
+async function loadKB(){
+  const d=await (await fetch('/api/plugins')).json(); kbData=d; renderKB();
+  $('visionEnabled').checked=!!(d.vision&&d.vision.config.enabled);
+  const vc=d.vision&&d.vision.config||{};
+  $('visionBase').value=vc.base_url||''; $('visionModel').value=vc.model||'';
+  $('visionKey').placeholder=vc.api_key&&vc.api_key.indexOf('***')>=0?'已保存密钥（留空不覆盖）':'留空则不覆盖';
+}
+function renderKB(){
+  const list=$('kbList'); list.innerHTML='';
+  const notes=(kbData&&kbData.kb&&kbData.kb.notes)||[];
+  if(!notes.length){ list.innerHTML='<div class="mem-empty">还没有归档笔记。可以说"记到知识库"，或在下面手动添加。</div>'; return; }
+  notes.forEach(n=>{
+    const row=document.createElement('div'); row.className='mem-item';
+    const t=document.createElement('div'); t.className='t'; t.textContent=(n.pinned?'📌 ':'')+n.title+(n.tags?'　['+n.tags+']':'');
+    const c=document.createElement('div'); c.className='s'; c.textContent=n.content;
+    const acts=document.createElement('div'); acts.style.cssText='margin-top:6px;display:flex;gap:6px';
+    const mk=(label,op,extra)=>{const b=document.createElement('button');b.textContent=label;
+      b.onclick=async()=>{await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(Object.assign({op,id:n.id},extra||{}))});await loadKB();};return b;};
+    acts.appendChild(mk(n.pinned?'取消置顶':'置顶','kb_pin',{pinned:!n.pinned}));
+    acts.appendChild(mk('删除','kb_delete'));
+    row.appendChild(t);row.appendChild(c);row.appendChild(acts);list.appendChild(row);
+  });
+}
+$('kbBtn').onclick=()=>{$('kbOverlay').classList.add('show');loadKB();};
+$('kbCloseBtn').onclick=()=>{$('kbOverlay').classList.remove('show');};
+$('kbAddBtn').onclick=async()=>{
+  const title=$('kbTitle').value.trim(), content=$('kbContent').value.trim(), tags=$('kbTags').value.trim();
+  if(!content){ $('kbStatus').className='status err'; $('kbStatus').textContent='内容不能为空'; return; }
+  const r=await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'kb_add',title,content,tags})});
+  if((await r.json()).ok){ $('kbTitle').value='';$('kbContent').value='';$('kbTags').value=''; }
+  await loadKB(); $('kbStatus').className='status ok'; $('kbStatus').textContent='已归档';
+};
+$('kbArchiveBtn').onclick=async()=>{
+  const r=await (await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'kb_archive_memory'})})).json();
+  await loadKB(); $('kbStatus').className='status ok';
+  $('kbStatus').textContent='从记忆归档：'+r.facts+' 条线索、'+r.draws+' 次抽牌';
+};
+$('kbExportBtn').onclick=async()=>{
+  const d=await (await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'kb_export'})})).json();
+  const blob=new Blob([d.markdown],{type:'text/markdown;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='olivia-kb.md';a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+/* ---------- 视觉设置 ---------- */
+const VISION_MAP={
+  openai:['https://api.openai.com/v1','gpt-4o-mini'],
+  qwen:['https://dashscope.aliyuncs.com/compatible-mode/v1','qwen-vl-max'],
+  glm:['https://open.bigmodel.cn/api/paas/v4','glm-4v-plus'],
+  moonshot:['https://api.moonshot.cn/v1','moonshot-v1-8k-vision-preview'],
+  custom:['','']
+};
+$('visionPreset').onchange=e=>{const p=VISION_MAP[e.target.value]||['',''];$('visionBase').value=p[0];$('visionModel').value=p[1];};
+$('visionSaveBtn').onclick=async()=>{
+  const payload={op:'vision_config',enabled:$('visionEnabled').checked,
+    base_url:$('visionBase').value.trim(),model:$('visionModel').value.trim(),
+    api_key:$('visionKey').value.trim()};
+  if(!payload.api_key) delete payload.api_key;
+  const d=await (await fetch('/api/plugins',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)})).json();
+  $('visionStatus').className='status '+(d.ok?'ok':'err');
+  $('visionStatus').textContent=d.ok?'视觉设置已保存':('失败：'+(d.error||''));
+  $('visionKey').value='';
+  await loadKB();
+};
+
 loadConfig();
+loadKB();
 loadCare(true);  // refresh unread badge on page load
 </script>
 </body>

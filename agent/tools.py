@@ -16,6 +16,7 @@ import random
 
 import knowledge
 import memory
+import plugin_kb
 
 # Standard spreads and their position labels (RWS tradition).
 SPREADS = {
@@ -44,6 +45,9 @@ TOOL_GUIDE = """【可用工具 / 必须遵守】
 - search_knowledge(query)：需要专业资料（咨询技术、伦理、危机干预）时调用。
 - save_memory(kind, text)：来访者明确表达偏好/边界，或说「请记住」时调用。
 - crisis_check(text)：察觉自伤、安全风险或严重侵害时调用；命中后立即跳出塔罗师角色走安全流程。
+- save_note(title, content, tags)：来访者要求「记到知识库/归档/笔记本」、或值得长期留存的
+  结构化内容（问卷、清单、重要决定）时调用。它与 save_memory 不同：这里是用户主动归档的笔记。
+- search_notes(query)：需要调阅用户此前归档的笔记/知识库内容时调用。
 调用工具后，依据工具返回的结果继续；工具没给的信息绝不编造。"""
 
 
@@ -121,6 +125,37 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_note",
+            "description": "把值得长期留存的内容归档到用户的个人知识库（笔记）。"
+                           "用户说「记到知识库/归档/笔记本」或给出清单、决定、问卷等结构化内容时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "笔记标题"},
+                    "content": {"type": "string", "description": "笔记正文"},
+                    "tags": {"type": "string", "description": "逗号分隔的标签，可选"},
+                },
+                "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_notes",
+            "description": "检索用户的个人知识库（归档笔记）。需要调阅此前归档的内容时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "检索关键词或问题"}
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -181,11 +216,25 @@ def crisis_check(text=""):
     }
 
 
+def save_note(title="", content="", tags=""):
+    nid = plugin_kb.add_note(title, content, tags, source="chat")
+    return {"ok": nid is not None, "id": nid, "title": title,
+            "note": "已归档到个人知识库。" if nid else "内容为空，未归档。"}
+
+
+def search_notes(query=""):
+    context, ids = plugin_kb.search_notes(str(query), top_k=3)
+    return {"ok": bool(context), "query": query, "ids": ids,
+            "context": context or "个人知识库中没有匹配的笔记；不要臆测。"}
+
+
 EXECUTORS = {
     "draw_cards": lambda a: draw_cards(a.get("spread", "三张"), a.get("question", "")),
     "search_knowledge": lambda a: search_knowledge(a.get("query", "")),
     "save_memory": lambda a: save_memory(a.get("kind", "fact"), a.get("text", "")),
     "crisis_check": lambda a: crisis_check(a.get("text", "")),
+    "save_note": lambda a: save_note(a.get("title", ""), a.get("content", ""), a.get("tags", "")),
+    "search_notes": lambda a: search_notes(a.get("query", "")),
 }
 
 
@@ -214,4 +263,8 @@ def summary(name, result):
         return "记住：%s" % result.get("text", "")[:30]
     if name == "crisis_check":
         return "危机检查：%s" % ("命中，转安全流程" if result.get("crisis") else "未命中")
+    if name == "save_note":
+        return "归档笔记：%s" % result.get("title", "")[:30]
+    if name == "search_notes":
+        return "检索笔记：%s" % ("、".join(str(i) for i in result.get("ids") or []) or "无匹配")
     return "工具 %s 执行完毕" % name

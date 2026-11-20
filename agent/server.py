@@ -11,6 +11,9 @@ Routes:
   GET  /api/memory       memory overview (profile/facts/draws/stats)
   POST /api/memory       {op: pin|unpin|delete_fact|delete_draw|profile_set|
                           profile_delete|forget|forget_recent|clear|add_fact, ...}
+  GET  /api/plugins      KB notes/stats + vision settings (key masked) + providers
+  POST /api/plugins      {op: kb_add|kb_update|kb_delete|kb_pin|kb_archive_memory|
+                           kb_archive_draws|kb_clear|kb_export|vision_config|vision_test, ...}
 """
 
 import json
@@ -22,6 +25,8 @@ import knowledge
 import memory
 import tools
 import scheduler
+import plugin_kb
+import plugin_vision
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -168,6 +173,18 @@ class Handler(BaseHTTPRequestHandler):
                 "tasks": scheduler.list_tasks(),
                 "outbox": scheduler.list_outbox(),
             })
+        elif p == "/api/plugins":
+            self._send_json({
+                "kb": {
+                    "notes": plugin_kb.list_notes(limit=200),
+                    "stats": plugin_kb.stats(),
+                },
+                "vision": {
+                    "config": plugin_vision.masked_config(),
+                    "configured": plugin_vision.is_configured(),
+                    "providers": plugin_vision.known_providers(),
+                },
+            })
         else:
             self._send_json({"error": "not found"}, 404)
 
@@ -201,9 +218,22 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/chat":
             message = body.get("message", "")
             history = body.get("history", [])
+            images = body.get("images", [])  # list of data URLs from the UI
             cfg = load_config()
             if body.get("api_key"):
                 cfg["api_key"] = body["api_key"]
+
+            # ---- vision bridge: cloud VLM describes images, feed text to main model ----
+            vision_ctx = ""
+            if images and plugin_vision.is_configured():
+                vcfg = plugin_vision.get_vision_config()
+                for img in images[:3]:
+                    try:
+                        desc = plugin_vision.describe_image(img, vcfg, question=message)
+                        if desc:
+                            vision_ctx += plugin_vision.build_context(desc, message) + "\n"
+                    except Exception as ve:
+                        vision_ctx += "【图片识别失败：%s】\n" % ve
 
             # explicit "forget" command -> handled locally, streamed as a reply
             import re as _re
@@ -231,6 +261,15 @@ class Handler(BaseHTTPRequestHandler):
                         system += "\n\n---\n" + mem_ctx
                 except Exception:
                     pass
+            # inject KB notes relevant to this turn
+            try:
+                notes_ctx, _nids = plugin_kb.search_notes(message, top_k=2)
+                if notes_ctx:
+                    system += "\n\n---\n以下是用户此前归档的笔记，相关时可自然引用：\n\n" + notes_ctx
+            except Exception:
+                pass
+            if vision_ctx:
+                system += "\n\n---\n" + vision_ctx
             use_tools = cfg.get("tools_enabled", True)
             if use_tools:
                 system += "\n\n---\n" + tools.TOOL_GUIDE
@@ -411,6 +450,65 @@ class Handler(BaseHTTPRequestHandler):
                     "status": scheduler.status(),
                     "tasks": scheduler.list_tasks(),
                     "outbox": scheduler.list_outbox(),
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif p == "/api/plugins":
+            op = body.get("op", "")
+            try:
+                if op == "kb_add":
+                    ok = plugin_kb.add_note(
+                        str(body.get("title", "")), str(body.get("content", "")),
+                        body.get("tags", ""), source="manual",
+                        pinned=bool(body.get("pinned", False))) is not None
+                elif op == "kb_update":
+                    ok = plugin_kb.update_note(
+                        int(body.get("id", 0)),
+                        title=body.get("title"), content=body.get("content"),
+                        tags=body.get("tags"), pinned=body.get("pinned"))
+                elif op == "kb_delete":
+                    ok = plugin_kb.delete_note(int(body.get("id", 0)))
+                elif op == "kb_pin":
+                    ok = plugin_kb.pin_note(int(body.get("id", 0)),
+                                            bool(body.get("pinned", True)))
+                elif op == "kb_archive_memory":
+                    n1 = plugin_kb.archive_memory(limit=int(body.get("limit", 50)))
+                    n2 = plugin_kb.archive_draws(limit=int(body.get("limit", 30)))
+                    self._send_json({"ok": True, "facts": n1, "draws": n2,
+                                     "stats": plugin_kb.stats()})
+                    return
+                elif op == "kb_clear":
+                    ok = plugin_kb.clear()
+                elif op == "kb_export":
+                    self._send_json({"ok": True, "markdown": plugin_kb.export_markdown()})
+                    return
+                elif op == "vision_config":
+                    vcfg = plugin_vision.get_vision_config()
+                    for k in ("enabled", "base_url", "model", "describe_prompt", "detail", "timeout"):
+                        if k in body:
+                            vcfg[k] = body[k]
+                    if body.get("api_key") and "***" not in str(body["api_key"]):
+                        vcfg["api_key"] = body["api_key"]
+                    all_cfg = plugin_vision.load_config()
+                    all_cfg["vision"] = vcfg
+                    plugin_vision.save_config(all_cfg)
+                    ok = True
+                elif op == "vision_test":
+                    vcfg = plugin_vision.get_vision_config()
+                    if body.get("api_key") and "***" not in str(body["api_key"]):
+                        vcfg["api_key"] = body["api_key"]
+                    desc = plugin_vision.describe_image(body.get("image", ""), vcfg)
+                    self._send_json({"ok": True, "description": desc})
+                    return
+                else:
+                    self._send_json({"ok": False, "error": "unknown op"}, 400)
+                    return
+                self._send_json({
+                    "ok": ok,
+                    "kb": {"notes": plugin_kb.list_notes(limit=200), "stats": plugin_kb.stats()},
+                    "vision": {"config": plugin_vision.masked_config(),
+                               "configured": plugin_vision.is_configured()},
                 })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 500)

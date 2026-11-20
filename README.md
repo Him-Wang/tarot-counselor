@@ -46,9 +46,11 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 │   └── persona.en.md          # English system prompt
 ├── skills/tarot-counselor/
 │   └── SKILL.md               # 技能格式（按需触发）
-├── agent/                     # 本地网页 Agent（双后端 + 记忆 + 工具调用）
+├── agent/                     # 本地网页 Agent（双后端 + 记忆 + 工具 + 插件）
 │   ├── llm.py / knowledge.py / memory.py / tools.py / server.py
-│   └── data/memory.db         # 私人记忆库（gitignore，绝不提交）
+│   ├── plugin_kb.py           # 个人知识库插件（记忆的归档扩展）
+│   ├── plugin_vision.py       # 视觉识别插件（云端 VLM 桥接，可配置）
+│   └── data/                  # memory.db / kb.db / scheduler.db（gitignore，绝不提交）
 ├── docs/                      # GitHub Pages 静态站源码
 ├── knowledge/                 # 专业知识库（辅助解牌）
 ├── build_docs.py              # 把人设+知识打包给静态站
@@ -130,11 +132,33 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 
 ---
 
+## 插件（仅本地版）
+
+### 个人知识库（记忆的归档扩展）
+
+记忆是自动、轻量的"线索"；知识库是你主动整理的"档案"——重要笔记、清单、决定，长期留存、可检索、可导出。存在 `agent/data/kb.db`（gitignore）。
+
+- 聊天里说"**记到知识库**"，Olivia 会调用 `save_note` 自动归档；需要调阅时调用 `search_notes`，相关笔记也会在每轮自然注入。
+- 点顶栏「**知识库**」：手动添加/置顶/删除笔记，一键"从记忆归档"（把已有的线索与抽牌历史整理进来，幂等），导出 Markdown 备份。
+- 与记忆的分工：`memory` = 自动抽取的线索；`plugin_kb` = 用户策展的档案，是分层里的"归档层"。
+
+### 视觉识别（云端 VLM 桥接，纯文本模型也能看图）
+
+**不依赖本地模型**。任意 OpenAI 兼容的视觉大模型都行（OpenAI / 通义 VL / 智谱 GLM-4V / Moonshot / 自建网关），填自己的 key 即用：
+
+- 在「设置 → 👁 视觉识别插件」里开启并填 base_url / model / api_key（预设已内置常见服务商）。密钥只存本机 `agent/data/plugins.json`（gitignore）。
+- 聊天框左侧「＋图」可附带最多 3 张图片。流程是：**云端 VLM 看图 → 生成客观中文描述 → 描述作为文字线索喂给主模型**。主模型始终是你配置的那个纯文本模型，它不会"假装看见"图片，只把描述当作你提供的线索。
+- 视觉 API 调用失败不会中断对话，会如实标注"图片识别失败"。
+
+> 两个插件都只在本地 Agent 生效；GitHub Pages 静态站无服务端，不含这两项。
+
+---
+
 ## 工具调用（本地 Agent，自主执行）
 
 本地版是真正的 **agentic loop**：模型自己判断何时调用工具，执行后把结果回填给模型继续，直到它给出最终回答。前端会用 `⚙` 徽章显示每一步工具执行。
 
-四个工具（`agent/tools.py`）：
+六个工具（`agent/tools.py`）：
 
 | 工具 | 作用 | 安全约束 |
 |---|---|---|
@@ -142,6 +166,8 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 | `search_knowledge` | 检索 `knowledge/` 专业资料 | 只做专业判断依据，不从牌里来 |
 | `save_memory` | 存偏好/边界/「请记住」 | 危机内容拒绝入库 |
 | `crisis_check` | 检测自伤/轻生等急性危机信号 | 命中即跳出塔罗师角色，走安全流程 |
+| `save_note` | 归档到个人知识库 | 用户主动策展，危机内容不入库 |
+| `search_notes` | 检索个人知识库笔记 | 调阅此前归档的内容 |
 
 - 实测：本地 `dsv4-9b-heretic-max:latest` 支持工具调用，能正确产出 `draw_cards(spread, question)`；端到端验证通过（模型调用工具→拿到牌→逐张按"牌意→位置→问题→情境"解读）。
 - 设置里可一键关闭工具调用（`tools_enabled`）。
