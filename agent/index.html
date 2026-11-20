@@ -8,7 +8,7 @@
   :root{
     --bg:#12101a; --panel:#1c1927; --panel2:#252135; --line:#332e45;
     --ink:#efeaf7; --muted:#a89fc0; --accent:#b98cff; --accent2:#e8b9ff;
-    --ok:#7fd6a8; --err:#ff9aa8; --radius:14px;
+    --ok:#7fd6a8; --err:#ff9aa8; --badge:#c0286a; --radius:14px;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
@@ -18,20 +18,21 @@
     display:flex;justify-content:center;
   }
   .app{width:100%;max-width:820px;height:100%;display:flex;flex-direction:column;padding:18px;gap:12px}
-  header{display:flex;align-items:center;gap:12px;padding:4px 6px}
+  header{display:flex;align-items:center;gap:8px;padding:4px 6px;flex-wrap:wrap}
   .avatar{width:42px;height:42px;border-radius:50%;flex:0 0 auto;
     background:linear-gradient(135deg,var(--accent),var(--accent2));
     display:grid;place-items:center;font-size:20px;box-shadow:0 4px 18px #b98cff44}
-  .title b{font-size:17px;letter-spacing:.3px}
-  .title small{display:block;color:var(--muted);font-size:12px}
+  .title b{font-size:17px;letter-spacing:.3px;white-space:nowrap}
+  .title small{display:block;color:var(--muted);font-size:12px;white-space:nowrap}
   .spacer{flex:1}
   button{font:inherit;cursor:pointer;border:1px solid var(--line);color:var(--ink);
     background:var(--panel2);border-radius:10px;padding:8px 14px;transition:.15s}
+  header button{padding:8px 10px;white-space:nowrap;flex-shrink:0}
   button:hover{border-color:var(--accent);background:#2e2842}
   button:disabled{opacity:.5;cursor:not-allowed}
-  .chip{font-size:12px;padding:5px 10px;color:var(--muted)}
+  .chip{font-size:12px;padding:5px 10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
   .prophecy-chip{display:none;font-size:11px;padding:4px 9px;color:#ffcf6b;
-    background:rgba(255,190,70,.12);border:1px solid rgba(255,190,70,.4);border-radius:20px;white-space:nowrap}
+    background:rgba(255,190,70,.12);border:1px solid rgba(255,190,70,.4);border-radius:20px;white-space:nowrap;flex-shrink:0}
   .prophecy-chip.on{display:inline-block}
 
   #chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 4px 4px}
@@ -39,10 +40,10 @@
   .msg.user{align-self:flex-end;flex-direction:row-reverse}
   .msg .bub{background:var(--panel);border:1px solid var(--line);padding:11px 15px;border-radius:var(--radius);white-space:pre-wrap;word-break:break-word}
   .msg.user .bub{background:linear-gradient(135deg,#5a3d86,#3c2c5e);border-color:#6b4a9c}
-  .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
+  .msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
   .meta-line{font-size:11px;color:var(--accent2);opacity:.8}
   .tool-badge{display:inline-block;font-size:11px;color:#c9b6ef;background:rgba(122,86,178,.16);border:1px solid rgba(150,115,205,.35);padding:3px 9px;border-radius:20px;margin:0 0 6px}
-  .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:10px;background:#e0609a;color:#fff;font-size:10px;line-height:16px;text-align:center}
+  .care-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:12px;background:var(--badge);color:#fff;font-size:12px;line-height:18px;text-align:center}
   .care-row{padding:9px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
   .care-row .t{font-size:13px;font-weight:600}
   .care-row .s{font-size:11px;color:var(--muted);margin-top:3px}
