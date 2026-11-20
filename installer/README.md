@@ -1,44 +1,38 @@
-# Olivia Agent · Windows 安装包生成
+# Olivia Agent · Windows 一键安装
 
-这个目录放的是**一键部署工具**：把本地 Agent 打包成一个自包含的 Windows 安装包。
+这个目录就是**安装器本体**——双击 `install.bat` 即可开始安装，不需要先生成 zip、不需要解压任何东西。
 
-## 生成安装包
+## 用法（最简单）
 
-在仓库根目录执行：
+1. 保持本目录与仓库根目录的 `agent/`、`knowledge/`、`prompts/` 在一起（clone 下来就是这样）。
+2. **双击 `install.bat`**：自动检测 Python 3，然后依次问你三个问题：
+   - **安装到哪儿**（回车 = 默认 `%LOCALAPPDATA%\Olivia`）
+   - **是否开机自启**（回车 = 否）
+   - **安装完立即启动**（回车 = 否）
+3. 装完双击桌面「Olivia 奥莉薇娅」打开，浏览器访问 `http://127.0.0.1:8765`，右上角「设置」填你自己的 API key。
+
+> 也就是说：**双击 installer 就直接进安装流程**，但三个选择仍由你当场决定——不是全默认硬装。
+
+## 发给别人 / 换电脑部署
+
+如果你想把一个"自带文件、脱离仓库"的安装包发给别人：
 
 ```bash
 python installer/make_installer.py
 ```
 
-产物：`installer/dist/Olivia-agent-setup.zip`（约 90 KB，纯标准库生成，无需 pip）。
+生成 `installer/dist/Olivia-agent-setup.zip`。对方解压后双击里面的 `install.bat`，体验完全一样（同样问那三个问题），因为 zip 里带了 `payload/`（agent + knowledge + prompts），不依赖仓库。
 
-## 安装包里有什么
+## 卸载
 
-解压后是一个"安装源"目录：
-
-```
-Olivia-agent-setup/
-├── install.bat          # 双击安装
-├── uninstall.bat        # 双击卸载
-├── install.ps1 / uninstall.ps1
-├── 使用说明.txt
-└── payload/             # agent/ + knowledge/ + prompts/（保持兄弟目录关系）
-```
-
-## 使用者怎么装（拿到 zip 的人）
-
-1. 解压整个 zip 到任意文件夹（不要只拖出单个文件）。
-2. 双击 `install.bat`：脚本自动检测 Python 3、询问安装位置（默认 `%LOCALAPPDATA%\Olivia`）、复制文件、在桌面和开始菜单建快捷方式，并可选加入开机自启、立即启动。
-3. 以后双击桌面「Olivia 奥莉薇娅」打开，浏览器访问 `http://127.0.0.1:8765`，右上角「设置」填入自己的 API key。
-4. 卸载：双击安装目录里的 `uninstall.bat`（会删快捷方式、开机自启、停止服务，并按确认删除程序目录及其中的 key/记忆数据）。
-
-**前提**：目标电脑装了 Python 3（安装时勾选 *Add Python to PATH*）。agent 本身零第三方依赖。
+双击安装目录里的 `uninstall.bat`，全自动删除快捷方式、开机自启、服务与数据（无需确认）。
 
 ## 设计说明
 
-- **不写死路径**：启动器用 `%~dp0` 相对定位，快捷方式指向安装目录，换任何电脑都能用。
-- **隐私零泄漏**：打包时排除 `agent/config.json`（API key）、`agent/data/*.db`（记忆/知识库）、`__pycache__`、`*.pyc`。
-- **精确停服**：server 启动时写 `agent/olivia.pid`，卸载时按 PID 精确停止，不误杀其它 Python 进程。
-- **单一真相源**：安装/卸载的 PowerShell 逻辑内嵌在 `make_installer.py`，每次生成都从同一份代码写出，改一处即可。
+- **双击即用**：`install.ps1` 会智能定位安装源——优先同目录 `payload/`（zip 分发场景），找不到就用上一级仓库根（clone 场景）。
+- **不写死路径**：启动器用 `%~dp0` 相对定位；快捷方式指向安装目录；解析出真实的 `python.exe`/`pythonw.exe` 绝对路径写进 launcher。
+- **隐私零泄漏**：复制后主动删除 `config.json`（API key）、`agent/data/*.db`（记忆/知识库）、`olivia.pid`、`__pycache__`。
+- **精确停服**：server 启动时写 `agent/olivia.pid`，覆盖安装/卸载时按 PID 精确停止旧服务，不误杀其它 Python 进程。
+- **单一真相源**：`make_installer.py` 只负责把这里的 install/uninstall 脚本连同 payload 打包成 zip；脚本本身只有这一份。
 
-> 如果你想要的是真正的 `.exe`/`.msi`（双击下一步下一步那种），可以在此基础上套 Inno Setup / NSIS：让安装程序先解包再执行 `install.ps1` 的等价逻辑即可。当前这个 zip 方案零外部工具、改起来最快。
+> 若需要真正的 `.exe`/`.msi`（双击下一步那种），可在此基础上套 Inno Setup / NSIS：让安装程序执行 `install.ps1` 的等价逻辑即可。当前 zip 方案零外部工具、改起来最快。

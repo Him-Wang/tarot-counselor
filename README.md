@@ -28,13 +28,11 @@ python server.py          # 仅 Python 3 标准库，无需 pip install
 
 双击 `start.bat` 可直接启动。key 只存本机 `agent/config.json`（已 gitignore）。Ollama 只能本地版用。
 
-### 一键安装包（发给别人 / 换电脑部署）
+### 一键安装（双击 installer）
 
-```bash
-python installer/make_installer.py
-```
+双击 `installer/install.bat` 直接进安装：自动检测 Python，问你三个问题（安装位置 / 开机自启 / 立即启动），然后建快捷方式并装好，全程不写死路径、不带任何 key 和记忆数据。
 
-生成 `installer/dist/Olivia-agent-setup.zip`。对方解压后双击 `install.bat`，自动检测 Python、选安装位置、建桌面/开始菜单快捷方式、可选开机自启；`uninstall.bat` 一键卸载。全程不写死路径、不含任何 key 和记忆数据。详见 `installer/README.md`。
+发给别人则先 `python installer/make_installer.py` 生成 `installer/dist/Olivia-agent-setup.zip`，对方解压后双击里面的 `install.bat`，体验完全一样。`uninstall.bat` 一键卸载。详见 `installer/README.md`。
 
 ---
 
