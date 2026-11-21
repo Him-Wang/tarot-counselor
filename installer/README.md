@@ -1,38 +1,40 @@
-# Olivia Agent · Windows 一键安装
+# Olivia 奥莉薇娅 · Windows 一键安装器
 
-这个目录就是**安装器本体**——双击 `install.bat` 即可开始安装，不需要先生成 zip、不需要解压任何东西。
+一个自包含的 `Olivia-setup.exe`：双击即装，无需 Python 安装包以外的任何东西，也不需要 `.bat` / `.ps1` / `pip` / 解压工具。
 
-## 用法（最简单）
+## 使用者：双击即装
 
-1. 保持本目录与仓库根目录的 `agent/`、`knowledge/`、`prompts/` 在一起（clone 下来就是这样）。
-2. **双击 `install.bat`**：自动检测 Python 3，然后依次问你三个问题：
-   - **安装到哪儿**（回车 = 默认 `%LOCALAPPDATA%\Olivia`）
-   - **是否开机自启**（回车 = 否）
-   - **安装完立即启动**（回车 = 否）
-3. 装完双击桌面「Olivia 奥莉薇娅」打开，浏览器访问 `http://127.0.0.1:8765`，右上角「设置」填你自己的 API key。
+1. 从 Release 下载 `Olivia-setup.exe`（约 11 MB），双击。
+2. 若提示未安装 Python 3，点确定打开 <https://www.python.org/downloads/>，安装时勾选 **Add Python to PATH**，装完重新双击安装器。
+3. 选择安装目录（默认 `%LOCALAPPDATA%\Olivia`）。
+4. 选择是否开机自启。
+5. 安装器自动解压内置文件、建桌面/开始菜单快捷方式、后台启动服务并打开浏览器 <http://127.0.0.1:8765>。
+6. 点右上角「设置」填入自己的 API key（DeepSeek 等）即可使用。
 
-> 也就是说：**双击 installer 就直接进安装流程**，但三个选择仍由你当场决定——不是全默认硬装。
+以后双击桌面「Olivia 奥莉薇娅」即可启动；命令行窗口不会出现，服务在后台运行。
 
-## 发给别人 / 换电脑部署
+## 开发者：重新构建安装包
 
-如果你想把一个"自带文件、脱离仓库"的安装包发给别人：
+环境：Windows + Python 3 + .NET Framework 4（系统自带 `csc.exe`，无需 Visual Studio / dotnet SDK）。
 
 ```bash
-python installer/make_installer.py
+python installer/build.py
 ```
 
-生成 `installer/dist/Olivia-agent-setup.zip`。对方解压后双击里面的 `install.bat`，体验完全一样（同样问那三个问题），因为 zip 里带了 `payload/`（agent + knowledge + prompts），不依赖仓库。
+产物在 `installer/dist/`：
+- `Olivia.exe` —— 启动器，后台起服务并打开浏览器。
+- `payload.zip` —— 打包的 agent/knowledge/prompts/skills（自动排除 config.json / 数据库 / 缓存）。
+- `Olivia-setup.exe` —— 最终单文件安装器，已内嵌上面两者。
+
+源码：`Setup.cs`（安装器）、`Launcher.cs`（启动器）。改完 C# 源码后重新运行 `build.py` 即可。
 
 ## 卸载
 
-双击安装目录里的 `uninstall.bat`，全自动删除快捷方式、开机自启、服务与数据（无需确认）。
+在 Windows「设置 → 应用」里卸载，或删除安装目录后手动删掉桌面/开始菜单快捷方式与开机自启项。程序数据（API key、记忆、知识库）都在安装目录内，删除目录即彻底清除。
 
 ## 设计说明
 
-- **双击即用**：`install.ps1` 会智能定位安装源——优先同目录 `payload/`（zip 分发场景），找不到就用上一级仓库根（clone 场景）。
-- **不写死路径**：启动器用 `%~dp0` 相对定位；快捷方式指向安装目录；解析出真实的 `python.exe`/`pythonw.exe` 绝对路径写进 launcher。
-- **隐私零泄漏**：复制后主动删除 `config.json`（API key）、`agent/data/*.db`（记忆/知识库）、`olivia.pid`、`__pycache__`。
-- **精确停服**：server 启动时写 `agent/olivia.pid`，覆盖安装/卸载时按 PID 精确停止旧服务，不误杀其它 Python 进程。
-- **单一真相源**：`make_installer.py` 只负责把这里的 install/uninstall 脚本连同 payload 打包成 zip；脚本本身只有这一份。
-
-> 若需要真正的 `.exe`/`.msi`（双击下一步那种），可在此基础上套 Inno Setup / NSIS：让安装程序执行 `install.ps1` 的等价逻辑即可。当前 zip 方案零外部工具、改起来最快。
+- **单文件**：payload 与启动器作为 Win32 资源嵌进 setup.exe，分发只发一个文件。
+- **零依赖**：C# 只用 .NET Framework 4 与 `System.IO.Compression`；服务端只用 Python 3 标准库。
+- **隐私零泄漏**：打包时排除 `config.json`、`agent/data/*.db`、`olivia.pid`、`__pycache__`，安装后再兜底清理一次。
+- **无黑窗口**：服务由 `pythonw.exe` 后台启动，快捷方式直接指向原生 `Olivia.exe`。

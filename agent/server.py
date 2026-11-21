@@ -238,6 +238,7 @@ def _cards_payload(result):
         "spread": spread,
         "spread_desc": result.get("spread_desc", ""),
         "question": result.get("question", ""),
+        "seed": result.get("seed"),
         "layout": result.get("layout") or spreads_mod.layout(spread),
         "items": [{
             "position": c.get("position", ""),

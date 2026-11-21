@@ -96,6 +96,10 @@ TOOLS = [
                         "type": "string",
                         "description": "来访者所问的问题，原样或简要转述",
                     },
+                    "seed": {
+                        "type": "integer",
+                        "description": "可选：复现同一副牌用的随机数种子。一般情况下留空，由系统客观随机生成。",
+                    },
                 },
                 "required": ["spread"],
             },
@@ -185,12 +189,24 @@ TOOLS = [
 ]
 
 
-def draw_cards(spread="三张", question=""):
-    """Objective random draw. Returns structured result for the model."""
+def draw_cards(spread="三张", question="", seed=None):
+    """Objective random draw. Returns structured result for the model.
+
+    ``seed`` 只影响牌面与正逆位的产生：给同一个 seed（同一牌阵）必然抽到
+    同一副牌。每次抽牌都会生成一个 seed 并随结果返回，供用户复现/自证；
+    不指定 seed 时用系统熵生成一个，行为与改造前同样是客观随机。
+    """
     spread = spread if spread in SPREADS else "三张"
     meta = spreads_mod.SPREAD_META.get(spread) or {}
     pos_pairs = meta.get("positions") or [(p, "") for p in SPREADS[spread]]
-    rng = random.SystemRandom()
+    # 每次抽牌都落一个 seed，用户据此可重放同一副牌（自证没有临时挑牌）。
+    if seed is None:
+        seed = random.SystemRandom().randrange(0, 2 ** 31)
+    try:
+        seed = int(seed)
+    except (TypeError, ValueError):
+        seed = random.SystemRandom().randrange(0, 2 ** 31)
+    rng = random.Random(seed)
     # Sample WITHOUT replacement from the canonical 78-card deck: the same
     # card cannot appear twice in one spread (standard tarot rule).
     indices = rng.sample(range(78), len(pos_pairs))
@@ -214,6 +230,7 @@ def draw_cards(spread="三张", question=""):
         "spread": spread,
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
+        "seed": seed,
         "layout": spreads_mod.layout(spread),
         "cards": cards,
         "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
@@ -266,7 +283,7 @@ def search_notes(query=""):
 
 
 EXECUTORS = {
-    "draw_cards": lambda a: draw_cards(a.get("spread", "三张"), a.get("question", "")),
+    "draw_cards": lambda a: draw_cards(a.get("spread", "三张"), a.get("question", ""), a.get("seed")),
     "search_knowledge": lambda a: search_knowledge(a.get("query", "")),
     "save_memory": lambda a: save_memory(a.get("kind", "fact"), a.get("text", "")),
     "crisis_check": lambda a: crisis_check(a.get("text", "")),
@@ -294,7 +311,10 @@ def summary(name, result):
                         for c in result["cards"][:3])
         more = "…" if len(result["cards"]) > 3 else ""
         total = len(result.get("cards") or [])
-        return "抽牌：%s · %d 张（%s）%s" % (result["spread"], total, cards, more)
+        seed = result.get("seed")
+        seed_txt = " · 种子 %s" % seed if seed is not None else ""
+        return "抽牌：%s · %d 张（%s）%s%s" % (
+            result["spread"], total, cards, more, seed_txt)
     if name == "search_knowledge":
         return "检索资料：%s" % ("、".join(result.get("docs") or []) or "无匹配")
     if name == "save_memory":
