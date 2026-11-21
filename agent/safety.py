@@ -110,10 +110,11 @@ def detect(text):
         return "sexual-assault"
     if _any(_SEXUAL_HARM_RE, t):
         return "sexual-harm"
-    if _any(_THREAT_RE, t):
-        return "threat"
+    # 先判"我要伤害别人"，避免"我想杀了那个伤害我的人"被威胁句式吃掉
     if _any(_HARM_OTHERS_RE, t):
         return "harm-others"
+    if _any(_THREAT_RE, t):
+        return "threat"
     if _self_harm_hit(t):
         return "self"
     return None
