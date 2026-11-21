@@ -58,6 +58,8 @@
   .prophecy-chip{display:none;font-size:var(--fs-caption);padding:5px 10px;color:#6b4710;
     background:#f6e8c8;border:1px solid #e6cf95;border-radius:20px;white-space:nowrap;flex-shrink:0}
   .prophecy-chip.on{display:inline-block}
+  .offline-chip{display:inline-block;font-size:var(--fs-caption);padding:5px 10px;color:#4a5d55;
+    background:#e4efe9;border:1px solid #bcd6c8;border-radius:20px;white-space:nowrap;flex-shrink:0}
 
   /* min-height:0 让 flex 子项正确裁剪滚动内容；z-index 低于顶栏 */
   #chat{flex:1;min-height:0;position:relative;z-index:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:10px 6px 6px}
@@ -267,9 +269,11 @@
     <div class="title"><b>Olivia · 奥莉薇娅</b><small>你的私人塔罗咨询师</small></div>
     <div class="spacer"></div>
     <span class="chip" id="backendChip">未配置</span>
+    <span class="offline-chip" id="offlineChip" title="模型不可用：抽牌与离线整理仍可正常使用" hidden>离线整理</span>
     <span class="prophecy-chip" id="prophecyChip" title="预言模式已开启：解读仅供娱乐">🔮 预言模式 · 仅供娱乐</span>
     <button id="careBtn" title="主动关怀">关怀<span id="careBadge" class="care-badge" hidden>0</span></button>
     <button id="shelfBtn" title="会话簿：本机保存的历次对话">会话簿</button>
+    <button id="shareBtn" title="把最后一副牌导出成图片">分享图</button>
     <button id="kbBtn">知识库</button>
     <button id="memoryBtn">记忆</button>
     <button id="settingsBtn">设置</button>
@@ -1101,6 +1105,9 @@ async function send(){
       if(obj.safety){ safetyKind=obj.safety; const sl=document.createElement('div');
         sl.className='safety-line'; sl.textContent='🛡 安全闸门已启动 · Olivia 暂停了占卜';
         inner.insertBefore(sl, bub); }
+      if(obj.offline){ $('offlineChip').hidden=false; }
+      if(obj.fallback){ const fl=document.createElement('div'); fl.className='safety-line';
+        fl.textContent='⚠ '+obj.fallback; inner.insertBefore(fl, bub); }
       if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
       if(obj.cards){ lastCards=obj.cards; await showCards(obj.cards); }
       if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); chat.scrollTop=chat.scrollHeight; }
@@ -1131,6 +1138,9 @@ async function send(){
           if(obj.safety){ safetyKind=obj.safety; const sl=document.createElement('div');
             sl.className='safety-line'; sl.textContent='🛡 安全闸门已启动 · Olivia 暂停了占卜';
             inner.insertBefore(sl, bub); }
+          if(obj.offline){ $('offlineChip').hidden=false; }
+          if(obj.fallback){ const fl=document.createElement('div'); fl.className='safety-line';
+            fl.textContent='⚠ '+obj.fallback; inner.insertBefore(fl, bub); }
           if(obj.tool){
             const badge=document.createElement('div'); badge.className='tool-badge';
             badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
@@ -1582,6 +1592,123 @@ $('visionSaveBtn').onclick=async()=>{
   $('visionKey').value='';
   await loadKB();
 };
+
+/* ---------------------------------------------------------------------------
+   分享图：把最后一副牌导出成 PNG（纯 Canvas，本地生成，不上传）。
+   Olivia 的风格——深紫底 + 月光银字，牌是主角：牌图按牌阵网格摆放，
+   每张牌下标牌位 / 牌名 / 正逆位，页脚写牌阵、问题与复现种子。
+   --------------------------------------------------------------------------- */
+function lastShareData(){
+  for(let i = history.length - 1; i >= 0; i--){
+    const m = history[i];
+    if(m && m.cards && m.cards.items && m.cards.items.length) return m.cards;
+  }
+  return null;
+}
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'safety-line';
+  t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:999';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2600);
+}
+function loadImage(src){
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+async function exportShare(){
+  const data = lastShareData();
+  if(!data){ toast('还没有可分享的牌，先抽一副吧。'); return; }
+  const items = data.items || [];
+  const W = 1080, H = 1350;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+
+  // 背景：深紫月光渐变
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#241c38'); bg.addColorStop(0.55, '#191430'); bg.addColorStop(1, '#100d20');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  // 淡淡的光晕
+  const halo = g.createRadialGradient(W/2, 300, 40, W/2, 300, 560);
+  halo.addColorStop(0, 'rgba(160,132,214,.20)'); halo.addColorStop(1, 'rgba(160,132,214,0)');
+  g.fillStyle = halo; g.fillRect(0, 0, W, 720);
+
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#efe9f7'; g.font = '600 46px "Noto Serif SC", "Songti SC", serif';
+  g.fillText('Olivia · 奥莉薇娅', W/2, 92);
+  g.fillStyle = '#b9a9d6'; g.font = '24px "Noto Sans SC", sans-serif';
+  g.fillText('你的私人塔罗咨询师', W/2, 146);
+
+  g.fillStyle = '#efe9f7'; g.font = '600 40px "Noto Serif SC", serif';
+  g.fillText(String(data.spread || '抽牌') + ' · ' + items.length + ' 张', W/2, 226);
+  const q = String(data.question || '').trim();
+  if(q && q !== '（来访者未明确说明）'){
+    g.fillStyle = '#c9bce0'; g.font = '24px "Noto Sans SC", sans-serif';
+    const qline = q.length > 32 ? q.slice(0, 31) + '…' : q;
+    g.fillText('问：' + qline, W/2, 282);
+  }
+
+  // 牌阵网格（沿用后端的 layout 坐标）
+  const lay = data.layout || {cols: items.length, rows: 1, cells: items.map((_,i)=>[i+1,1])};
+  const cols = Math.max(1, lay.cols|0), rows = Math.max(1, lay.rows|0);
+  const gridTop = 370, gridBottom = 1120;
+  const cellW = Math.floor(920 / cols), cellH = Math.floor((gridBottom - gridTop) / rows);
+  const imgW = Math.min(150, Math.floor(cellW * 0.72));
+  const imgH = Math.round(imgW * 1.62);
+
+  const imgs = await Promise.all(items.map(c => {
+    const src = typeof c.image === 'string' && /^cards\/[A-Za-z0-9_\-\.]+\.(jpe?g|png)$/i.test(c.image)
+      ? c.image : '';
+    return src ? loadImage(src) : null;
+  }));
+
+  items.forEach((c, i) => {
+    const cell = (lay.cells && lay.cells[i]) || [i+1, 1];
+    const col = Math.max(1, Math.min(cols, Number(cell[0])||1));
+    const row = Math.max(1, Math.min(rows, Number(cell[1])||1));
+    const cx = W/2 + (col - (cols+1)/2) * cellW;
+    const cy = gridTop + (row - 0.5) * cellH;
+    const im = imgs[i];
+    if(im){
+      g.save();
+      if(c.orientation === '逆位'){ g.translate(cx, cy - 6); g.rotate(Math.PI); g.drawImage(im, -imgW/2, -imgH/2, imgW, imgH); }
+      else g.drawImage(im, cx - imgW/2, cy - 6 - imgH/2, imgW, imgH);
+      g.restore();
+    } else {
+      g.strokeStyle = '#5b497e'; g.lineWidth = 2;
+      g.strokeRect(cx - imgW/2, cy - 6 - imgH/2, imgW, imgH);
+    }
+    g.fillStyle = '#efe9f7'; g.font = '600 20px "Noto Sans SC", sans-serif';
+    g.fillText(String(c.position || (i+1)), cx, cy + imgH/2 + 16);
+    g.fillStyle = '#c9bce0'; g.font = '18px "Noto Sans SC", sans-serif';
+    g.fillText(String(c.name || ''), cx, cy + imgH/2 + 44);
+    g.fillStyle = '#9a86c0'; g.font = '16px "Noto Sans SC", sans-serif';
+    g.fillText(String(c.orientation || ''), cx, cy + imgH/2 + 68);
+  });
+
+  // 页脚
+  g.strokeStyle = 'rgba(160,132,214,.35)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(120, 1170); g.lineTo(W-120, 1170); g.stroke();
+  g.fillStyle = '#9a86c0'; g.font = '18px "Noto Sans SC", sans-serif';
+  g.fillText('牌意来自传统韦特体系 · 照见当下，不预言结果', W/2, 1216);
+  if(data.seed != null) g.fillText('复现种子 ' + data.seed, W/2, 1252);
+  g.fillStyle = '#6f6191'; g.font = '16px "Noto Sans SC", sans-serif';
+  g.fillText('Olivia · 本地生成', W/2, 1300);
+
+  try{
+    const a = document.createElement('a');
+    a.href = cv.toDataURL('image/png');
+    a.download = 'olivia-' + (data.spread || 'spread') + '-' + Date.now() + '.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('分享图已保存为 PNG。');
+  }catch(e){ toast('导出失败：' + e); }
+}
+$('shareBtn').onclick = exportShare;
 
 /* 启动时按书脊翻到对应的一页：#/chat/<id> */
 (function bootRoute(){

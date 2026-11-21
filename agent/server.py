@@ -23,6 +23,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 import llm
 import provider
+import offline
 import knowledge
 import memory
 import tools
@@ -472,6 +473,9 @@ class Handler(BaseHTTPRequestHandler):
             sid = str(body.get("session_id") or "default")
             cfg = load_config()
             cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
+            # 离线整理降级：没有可用 key（或模型调用失败）时，不伪装 AI，
+            # 只客观整理本地已抽的牌。抽牌本身永远可用，与这个标志无关。
+            _offline = offline.is_offline(cfg)
 
             # ---- 安全闸门（服务端权威）----
             # 危机判定绝不交给模型"自觉调用 crisis_check"：那是个工具，
@@ -669,10 +673,24 @@ class Handler(BaseHTTPRequestHandler):
                     _pending_draws.pop(sid, None)
                     # 牌在抽牌轮已经记入记忆，这里不再重复入库。
                     turn_draw = None
-                    for ev in provider.stream_chat_events(msgs, cfg, tools=None):
-                        if ev["type"] == "token":
-                            full.append(ev["text"])
-                            emit({"token": ev["text"]})
+                    if _offline:
+                        # 离线降级：不假装模型解读，只按传统牌意 + 牌位 + 种子
+                        # 客观整理这副已抽出的牌，让「看牌 → 读牌」链走完。
+                        emit({"offline": True})
+                        for piece in offline.chunks(offline.compose(pending_result, message)):
+                            full.append(piece)
+                            emit({"token": piece})
+                    else:
+                        for ev in provider.stream_chat_events(msgs, cfg, tools=None):
+                            if ev["type"] == "token":
+                                full.append(ev["text"])
+                                emit({"token": ev["text"]})
+                elif _offline:
+                    # ---- 离线无牌对话：不调模型，给不越界的引导 ----
+                    emit({"offline": True})
+                    for piece in offline.chunks(offline.compose_chat(message)):
+                        full.append(piece)
+                        emit({"token": piece})
                 else:
                     # ---- agentic loop: model <-> tools until no tool call ----
                     MAX_ROUNDS = 6
@@ -756,9 +774,26 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
             except Exception as e:
-                payload = json.dumps({"error": str(e)}, ensure_ascii=False)
-                self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
-                self.wfile.flush()
+                # 模型连接失败（有 key 但网络/认证/超时出错）：不把人丢进死胡同。
+                # 有牌就用离线整理接住这副牌；没牌也给一条可离线抽牌的引导。
+                # 不外泄异常里的 URL / key 细节。
+                print("[chat] model call failed, fell back to offline: %s" % e)
+
+                def _emit_err(obj):
+                    self.wfile.write(
+                        ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                    self.wfile.flush()
+
+                _fallback_draw = locals().get("turn_draw") or pending_result
+                if _fallback_draw:
+                    _emit_err({"offline": True, "fallback": "模型连接失败，已改为离线整理"})
+                    for piece in offline.chunks(offline.compose(_fallback_draw, message)):
+                        _emit_err({"token": piece})
+                else:
+                    _emit_err({"offline": True, "fallback": "模型连接失败"})
+                    for piece in offline.chunks(offline.compose_chat(message)):
+                        _emit_err({"token": piece})
+                _emit_err({"done": True})
         elif p == "/api/memory":
             op = body.get("op", "")
             try:

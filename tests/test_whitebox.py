@@ -163,6 +163,28 @@ check("memory 否定放行", not memory.is_crisis_text("我不会自杀的"))
 check("add_fact 拒危机文本", memory.add_fact("fact", "我想自杀") is False)
 
 
+# --------------------------------------------------------------- offline
+section("offline.py 离线整理降级")
+offline = importlib.import_module("offline")
+check("空 key 判离线", offline.is_offline({"api_key": ""}))
+check("掩码 key 判离线", offline.is_offline({"api_key": "sk-****abcd"}))
+check("真实 key 不判离线", not offline.is_offline({"api_key": "sk-real12345"}))
+_off_draw = tools.draw_cards("三张", "我该不该换工作", seed=42)
+_off_text = offline.compose(_off_draw, "我该不该换工作")
+check("整理含【离线整理】标识", "离线整理" in _off_text)
+check("整理含牌位名（过去/现在/未来）",
+      all(p in _off_text for p in ("过去", "现在", "未来")))
+check("整理含传统牌意", "传统牌意" in _off_text)
+check("整理含复现种子", "复现种子：42" in _off_text)
+check("整理不承诺预测", "不预言" in _off_text)
+check("整理每张牌都列到", all(c["name"] in _off_text for c in _off_draw["cards"]))
+check("chunks 切分保留全部文本",
+      "".join(offline.chunks(_off_text)).replace(" ", "") == _off_text.replace(" ", ""))
+check("无牌时 compose 有引导", "抽牌" in offline.compose(None))
+check("无牌对话引导不越界",
+      "离线整理" in offline.compose_chat("你好") and "抽牌" in offline.compose_chat("你好"))
+
+
 # --------------------------------------------------------------- server
 section("server.py 集成点")
 server_src = open(os.path.join(AGENT, "server.py"), encoding="utf-8").read()
@@ -175,6 +197,9 @@ check("闸门在抽牌分支之前",
 check("已切换到 provider.stream_chat_events",
       "provider.stream_chat_events" in server_src)
 check("配置白名单含 protocol", '"protocol"' in server_src)
+check("导入 offline 降级模块", "import offline" in server_src)
+check("解读轮接离线降级", "offline.compose(pending_result" in server_src)
+check("模型失败也兜底离线", "fell back to offline" in server_src)
 
 
 print("\n" + "=" * 46)

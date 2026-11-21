@@ -118,6 +118,9 @@ try:
     check("首页含 hash 路由 boot", "#/chat/" in html)
     check("首页含安全样式", "safety-line" in html)
     check("首页含 Anthropic/Gemini 预设", "anthropic" in html and "gemini" in html)
+    check("首页有分享图按钮", 'id="shareBtn"' in html)
+    check("首页有离线标识 chip", 'id="offlineChip"' in html)
+    check("首页有 Canvas 导出逻辑", "toDataURL('image/png')" in html)
 
     # ----------------------------------------------------------- config
     status, _, body = http_get("/api/config")
@@ -170,6 +173,27 @@ try:
         names = [c.get("name") for c in items]
         check("抽牌不放回", len(names) == len(set(names)), str(names))
     check("抽牌轮不触发安全闸门", not [e for e in evs4 if "safety" in e])
+
+    # ------------------------------------------- 离线整理降级（无 key）
+    # 接续 bb-draw 的那副牌给出问题：解读轮应走离线整理，不发牌不调模型，
+    # 明确标注 offline，正文带传统牌意/牌位/复现种子，且不伪装成 AI 解读。
+    status, evs_off = post_chat("就着这副牌说说我的工作", session="bb-draw")
+    off_flags = [e for e in evs_off if e.get("offline")]
+    off_tokens = "".join(e.get("token", "") for e in evs_off if "token" in e)
+    check("离线解读轮标注 offline", bool(off_flags), "evs=%r" % evs_off[:3])
+    check("离线整理含【离线整理】标识", "离线整理" in off_tokens,
+          "tokens=%r" % off_tokens[:120])
+    check("离线整理含传统牌意", "传统牌意" in off_tokens)
+    check("离线整理不伪装 AI", "不是 AI 解读" in off_tokens)
+    check("离线整理含复现种子", "复现种子" in off_tokens)
+    check("离线流正常结束", any(e.get("done") for e in evs_off))
+
+    # 无牌的普通对话也应给离线引导，不出现死胡同文案
+    status, evs_chat = post_chat("你好，在吗", session="bb-chat")
+    chat_tokens = "".join(e.get("token", "") for e in evs_chat if "token" in e)
+    check("无牌离线对话有引导", "离线整理" in chat_tokens and "抽牌" in chat_tokens,
+          "tokens=%r" % chat_tokens[:120])
+    check("无牌离线不当死胡同", "没有收到回复" not in chat_tokens)
 
     # ------------------------------------------------- history 残留危机
     status, evs5 = post_chat(

@@ -18,6 +18,7 @@ import random
 import knowledge
 import memory
 import plugin_kb
+import scheduler as scheduler_mod
 import spreads as spreads_mod
 
 # 牌阵定义集中在 spreads.py；这里取 {名称: [牌位名, ...]} 的映射。
@@ -186,6 +187,96 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "lookup_card",
+            "description": "精确查一张牌的韦特传统牌意（按牌名直查，不是关键词检索）。"
+                           "来访者问到某张具体牌、或需要核对牌名对应的含义时调用；"
+                           "牌名用「死神」「宝剑八」「圣杯王后」这种写法。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "牌名，如 死神 / 宝剑八 / 圣杯王后 / 权杖王牌",
+                    },
+                    "orientation": {
+                        "type": "string",
+                        "enum": ["正位", "逆位", "两者"],
+                        "description": "要正位、逆位，还是两者都给。默认两者。",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_memory",
+            "description": "主动回忆此前记住的线索、稳定画像与抽牌历史。"
+                           "需要回访「上次你说过什么」「之前抽过什么牌」时调用；"
+                           "也可以用 forget 删掉一条记错的线索。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "what": {
+                        "type": "string",
+                        "enum": ["facts", "profile", "draws", "forget"],
+                        "description": "facts=记住的线索，profile=稳定画像，"
+                                       "draws=抽牌历史，forget=删掉一条线索",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "最多返回几条，默认 10",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "what=forget 时必填：要删除的那条线索原文（或其片段）",
+                    },
+                },
+                "required": ["what"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_reminder",
+            "description": "给来访者设一个定时关怀/提醒。他说「明早九点提醒我」「每周一问我进度」"
+                           "「过两小时来看看我」时调用。到点后 Olivia 会主动写一条消息进收件箱。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "任务名，如「周一进度问候」"},
+                    "intent": {"type": "string", "description": "到点时要 Olivia 说什么、关心什么"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["once", "daily", "weekly", "interval"],
+                        "description": "once=仅一次，daily=每天，weekly=每周，interval=每隔 N 分钟",
+                    },
+                    "run_at": {
+                        "type": "string",
+                        "description": "kind=once 时必填，格式 YYYY-MM-DD HH:MM（24 小时制）",
+                    },
+                    "cron_time": {
+                        "type": "string",
+                        "description": "kind=daily/weekly 时的时刻，格式 HH:MM，默认 09:00",
+                    },
+                    "weekday": {
+                        "type": "integer",
+                        "description": "kind=weekly 时用，0=周一 … 6=周日，默认 0",
+                    },
+                    "interval_min": {
+                        "type": "integer",
+                        "description": "kind=interval 时的间隔分钟数，默认 120",
+                    },
+                },
+                "required": ["name", "intent", "kind"],
+            },
+        },
+    },
 ]
 
 
@@ -282,6 +373,141 @@ def search_notes(query=""):
             "context": context or "个人知识库中没有匹配的笔记；不要臆测。"}
 
 
+def lookup_card(name="", orientation="两者"):
+    """按牌名直查传统牌意（精确匹配，不走关键词检索）。"""
+    raw = str(name or "").strip()
+    if not raw:
+        return {"ok": False, "reason": "牌名为空"}
+    # 容忍「宝剑 8」「圣杯 ace」这类写法，统一到规范牌名
+    norm = raw.replace(" ", "").replace("Ａ", "A")
+    aliases = {"王牌": "王牌", "A": "王牌", "a": "王牌", "ace": "王牌", "Ace": "王牌"}
+    for k, v in aliases.items():
+        if norm.endswith(k) and len(norm) > len(k):
+            norm = norm[:-len(k)] + v
+            break
+    if norm not in DECK:
+        # 常见错写：数字写成阿拉伯数字
+        zh = {"1": "王牌", "2": "二", "3": "三", "4": "四", "5": "五",
+              "6": "六", "7": "七", "8": "八", "9": "九", "10": "十"}
+        for suit in _SUITS:
+            if norm.startswith(suit):
+                tail = norm[len(suit):]
+                if tail in zh:
+                    norm = suit + zh[tail]
+                    break
+    if norm not in DECK:
+        return {"ok": False, "name": raw,
+                "reason": "牌库里没有这张牌；牌名要用「死神」「宝剑八」「圣杯王后」这种写法。",
+                "examples": ["愚者", "死神", "宝剑八", "圣杯王后", "权杖王牌"]}
+    want = str(orientation or "两者")
+    out = {"ok": True, "name": norm}
+    if want in ("正位", "两者"):
+        out["正位"] = knowledge.get_card_meaning(norm, "正位")
+    if want in ("逆位", "两者"):
+        out["逆位"] = knowledge.get_card_meaning(norm, "逆位")
+    out["image"] = card_image(norm)
+    out["note"] = "这是既定的传统牌意，不要改写或替换；解读时按「牌意→牌位→问题→情境」使用。"
+    return out
+
+
+def recall_memory(what="facts", limit=10, text=""):
+    """主动回忆：线索 / 画像 / 抽牌历史，或删掉一条线索。"""
+    what = str(what or "facts")
+    try:
+        limit = max(1, min(int(limit or 10), 50))
+    except (TypeError, ValueError):
+        limit = 10
+    if what == "forget":
+        snippet = str(text or "").strip()
+        if not snippet:
+            return {"ok": False, "reason": "要删哪一条？请给出线索原文或其中一段。"}
+        # 先按原文精确/包含匹配找到 id，再删；找不到就如实说
+        facts = memory.list_facts(limit=200)
+        hit = None
+        for f in facts:
+            if snippet in (f.get("text") or ""):
+                hit = f
+                break
+        if not hit:
+            return {"ok": False, "reason": "没有找到包含「%s」的线索。" % snippet[:30]}
+        ok = memory.delete_fact(hit["id"])
+        return {"ok": bool(ok), "deleted": hit.get("text", "")[:60] if ok else ""}
+    if what == "profile":
+        rows = memory.list_profile()
+        return {"ok": True, "profile": [{"key": r.get("key"), "value": r.get("value")}
+                                        for r in rows[:limit]]}
+    if what == "draws":
+        rows = memory.list_draws(limit=limit)
+        out = []
+        for d in rows:
+            cards = "、".join(
+                (c.get("name", "") + ("逆位" if c.get("reversed") else "正位"))
+                for c in (d.get("cards") or []))
+            out.append({"date": (d.get("created_at") or "")[:16],
+                        "spread": d.get("spread", ""),
+                        "cards": cards,
+                        "question": d.get("question", "")})
+        return {"ok": True, "draws": out}
+    rows = memory.list_facts(limit=limit)
+    return {"ok": True, "facts": [{"kind": r.get("kind"), "text": r.get("text"),
+                                   "pinned": bool(r.get("pinned"))} for r in rows]}
+
+
+def schedule_reminder(name="", intent="", kind="once", run_at="",
+                      cron_time="09:00", weekday=0, interval_min=120):
+    """给来访者建一个定时关怀任务（走 scheduler 的 tasks 表）。"""
+    import re as _re
+    kind = str(kind or "once")
+    if kind not in ("once", "daily", "weekly", "interval"):
+        return {"ok": False, "reason": "kind 只能是 once / daily / weekly / interval"}
+    name = str(name or "").strip() or "主动关怀"
+    intent = str(intent or "").strip() or "关心一下我最近怎么样"
+    data = {"name": name[:60], "intent": intent[:400], "kind": kind,
+            "enabled": True, "toast": True}
+    if kind == "once":
+        ra = str(run_at or "").strip().replace("/", "-")
+        if not _re.match(r"^\d{4}-\d{1,2}-\d{1,2}([ T]\d{1,2}:\d{2})?$", ra):
+            return {"ok": False,
+                    "reason": "kind=once 需要 run_at，格式 YYYY-MM-DD HH:MM，例如 2026-12-25 09:00。"}
+        if "T" in ra:
+            ra = ra.replace("T", " ")
+        if len(ra) == 10:                      # 只给日期 -> 默认当天 09:00
+            ra += " 09:00"
+        date_part, hm = ra.split(" ")
+        y, mo, d = date_part.split("-")
+        hh, mm = hm.split(":")
+        data["run_at"] = "%s-%02d-%02d %02d:%02d" % (
+            y, int(mo), int(d), int(hh), int(mm))
+        data["cron_time"] = data["run_at"][11:]
+    elif kind in ("daily", "weekly"):
+        ct = str(cron_time or "09:00").strip()
+        if not _re.match(r"^\d{1,2}:\d{2}$", ct):
+            return {"ok": False, "reason": "cron_time 要用 HH:MM，例如 09:00。"}
+        hh, mm = ct.split(":")
+        data["cron_time"] = "%02d:%02d" % (int(hh), int(mm))
+        if kind == "weekly":
+            try:
+                data["weekday"] = max(0, min(int(weekday or 0), 6))
+            except (TypeError, ValueError):
+                data["weekday"] = 0
+    else:  # interval
+        try:
+            data["interval_min"] = max(5, int(interval_min or 120))
+        except (TypeError, ValueError):
+            data["interval_min"] = 120
+    try:
+        tid = scheduler_mod.add_task(data)
+    except Exception as e:
+        return {"ok": False, "reason": "创建定时任务失败：%s" % e}
+    label = {"once": "仅一次", "daily": "每天", "weekly": "每周", "interval": "每隔"}[kind]
+    when = (data.get("run_at") or data.get("cron_time") or
+            ("%d 分钟" % data.get("interval_min", 120)))
+    return {"ok": bool(tid), "id": tid, "name": data["name"],
+            "when": "%s %s" % (label, when),
+            "note": "已加入主动关怀；到点后消息会出现在「关怀」收件箱，"
+                    "需要桌面通知请确认总开关已开。"}
+
+
 EXECUTORS = {
     "draw_cards": lambda a: draw_cards(a.get("spread", "三张"), a.get("question", ""), a.get("seed")),
     "search_knowledge": lambda a: search_knowledge(a.get("query", "")),
@@ -289,6 +515,13 @@ EXECUTORS = {
     "crisis_check": lambda a: crisis_check(a.get("text", "")),
     "save_note": lambda a: save_note(a.get("title", ""), a.get("content", ""), a.get("tags", "")),
     "search_notes": lambda a: search_notes(a.get("query", "")),
+    "lookup_card": lambda a: lookup_card(a.get("name", ""), a.get("orientation", "两者")),
+    "recall_memory": lambda a: recall_memory(a.get("what", "facts"),
+                                             a.get("limit", 10), a.get("text", "")),
+    "schedule_reminder": lambda a: schedule_reminder(
+        a.get("name", ""), a.get("intent", ""), a.get("kind", "once"),
+        a.get("run_at", ""), a.get("cron_time", "09:00"),
+        a.get("weekday", 0), a.get("interval_min", 120)),
 }
 
 
@@ -325,4 +558,23 @@ def summary(name, result):
         return "归档笔记：%s" % result.get("title", "")[:30]
     if name == "search_notes":
         return "检索笔记：%s" % ("、".join(str(i) for i in result.get("ids") or []) or "无匹配")
+    if name == "lookup_card":
+        if not result.get("ok"):
+            return "查牌：%s" % (result.get("reason") or "未找到")
+        return "查牌：%s（%s）" % (result.get("name", ""), "已取传统牌意")
+    if name == "recall_memory":
+        what = result.get("what") or ""
+        if "facts" in result:
+            return "回忆线索：%d 条" % len(result.get("facts") or [])
+        if "profile" in result:
+            return "回忆画像：%d 项" % len(result.get("profile") or [])
+        if "draws" in result:
+            return "回忆抽牌：%d 次" % len(result.get("draws") or [])
+        if result.get("ok"):
+            return "忘掉：%s" % (result.get("deleted") or "")[:30]
+        return "回忆：%s" % (result.get("reason") or "无结果")
+    if name == "schedule_reminder":
+        if not result.get("ok"):
+            return "定时关怀：%s" % (result.get("reason") or "创建失败")
+        return "定时关怀：%s（%s）" % (result.get("name", ""), result.get("when", ""))
     return "工具 %s 执行完毕" % name
