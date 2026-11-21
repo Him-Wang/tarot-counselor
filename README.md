@@ -102,6 +102,7 @@ python server.py          # 仅依赖 Python 3 标准库
 | ✅ **改完能自查** | `tests/` 白盒 + 黑盒两套自查脚本，纯标准库、不碰真实 API，一键验证安全闸门 / 抽牌 / 协议 / 路由 / 离线整理 |
 | 🌙 **离线整理** | 没 key / 模型失败也能用：按传统牌意 + 牌位 + 复现种子客观整理已抽的牌，明说"不是 AI 解读"，不编造、不预言 |
 | 🖼 **本地分享图** | 一键把最后一副牌导出成 PNG：深紫月光底 + 按牌阵几何摆放的牌图 + 牌位/牌名/正逆位 + 复现种子，纯 Canvas 本地生成、不上传 |
+| 📱 **安卓 App** | `android/` 是一个 WebView 薄客户端：把本机跑着的 Olivia 装进手机，支持返回键、下载解读图到相册、原生中文朗读（TTS）、双击放大牌面 |
 | 🔒 **零第三方依赖** | Agent 仅用 Python 3 标准库；数据全部留在本机 |
 
 ### 分层人格
@@ -150,6 +151,10 @@ python server.py          # 仅依赖 Python 3 标准库
 │   ├── spreads/ skills/ ethics/ …
 ├── installer/                  # 单文件 exe 安装器源码与构建脚本
 │   └── build.py                # python installer/build.py 重新构建
+├── android/                    # 安卓 App（WebView 薄客户端，见 android/README.md）
+│   ├── build.ps1               # 一条命令出签名 APK（aapt2 + d8 + apksigner）
+│   ├── src/com/olivia/tarot/   # MainActivity：WebView / TTS 桥 / 相册下载 / 换地址
+│   └── res/                    # 图标与字符串
 └── README.md
 ```
 
@@ -170,6 +175,26 @@ python tests/test_blackbox.py     # 黑盒：起独立服务，发真实 HTTP �
 - **黑盒**（41 项）：在独立端口起服务，验证危机请求**不发牌、不调工具、先给求助资源**；本地抽牌出牌正确且不放回；**无 key 的离线解读轮标注 offline、明确"不是 AI 解读"、带传统牌意与复现种子，无牌对话不当死胡同**；history 危机残留不二次报警；深链路由、协议选择器、分享图按钮已在首页；牌图可访问、目录穿越被拒。
 
 > 黑盒用 `AGENT_PORT` 起独立端口，不会占用你正在跑的 8765 实例；可用 `--port` 改端口。
+
+---
+
+## 📱 安卓 App
+
+`android/` 是一个不重新实现任何逻辑的 **WebView 薄客户端**：Olivia 仍然跑在你的电脑（或任何一台机器）上，手机只是个窗口。这样牌义、记忆、定时任务、离线整理全都只有一份，改一处两边都更新。
+
+- **连哪台机器**：装好先连电脑上的 `http://<电脑IP>:8765`；连不上会显示错误页，里面可以直接改地址。默认地址是模拟器用的 `http://10.0.2.2:8765`。
+- **手机能做的**：抽牌 / 解读 / 补牌 / 停止生成 / 双击放大牌面 / 存这次解读成图（落到相册 `Pictures/Olivia`）/ 朗读（走系统 TTS，不依赖 Web Speech）/ 关怀面板里开每日一牌。
+- **首次真正连手机**：电脑上 `AGENT_HOST=0.0.0.0 python agent/server.py`（默认只监听 `127.0.0.1`），手机和电脑同一个 Wi-Fi，安卓 9+ 的明文 HTTP 已在本 App 里放行。开放到局域网后同网段的人也能打开她，用完记得改回默认。
+
+自己出包（无需 Android Studio、无需 Gradle，一台装了 JDK 17 + Android SDK 的机器即可）：
+
+```powershell
+# 依赖：JDK 17、Android SDK（platform 34 + build-tools 34.0.0）放在 ..\android\sdk
+powershell -NoProfile -ExecutionPolicy Bypass -File android\build.ps1
+# 产物：android\build\Olivia-release.apk
+```
+
+签名密钥默认读 `android\keystore\olivia-release.jks`（别名 `olivia`，示例口令 `olivia-tarot`，**自己用请换掉**）；不想用现成密钥就加 `-Keystore <路径> -StorePass <口令> -KeyAlias <别名>` 重新生成一把。更细的说明、装法与调试（`chrome://inspect` / `adb reverse`）见 [`android/README.md`](android/README.md)。
 
 ---
 

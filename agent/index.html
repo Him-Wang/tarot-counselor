@@ -847,6 +847,7 @@ function closeLightbox(){
 
 /* ---------- 朗读：把 Olivia 的话念出来 ---------- */
 let speakingBtn = null;
+let nativeTimer = null;
 function plainForSpeech(text){
   return String(text || '')
     .replace(/```[\s\S]*?```/g, '')
@@ -857,20 +858,37 @@ function plainForSpeech(text){
     .replace(/\s+/g, ' ')
     .trim();
 }
+// 安卓 WebView 没有 Web Speech API，App 里自带一个 TTS 桥（window.OliviaNative）
+function hasWebSpeech(){ return typeof window.speechSynthesis !== 'undefined'; }
+function hasNativeSpeech(){ return !!(window.OliviaNative && window.OliviaNative.speak); }
+function canSpeak(){ return hasWebSpeech() || hasNativeSpeech(); }
 function stopSpeech(){
-  try { window.speechSynthesis.cancel(); } catch(e) {}
+  try { if(hasWebSpeech()) window.speechSynthesis.cancel(); } catch(e) {}
+  try { if(hasNativeSpeech() && window.OliviaNative.stop) window.OliviaNative.stop(); } catch(e) {}
+  if(nativeTimer){ clearTimeout(nativeTimer); nativeTimer = null; }
   if(speakingBtn){ speakingBtn.classList.remove('on'); speakingBtn.textContent = '朗读'; speakingBtn = null; }
 }
 function speakText(text, btn){
-  if(!('speechSynthesis' in window)){ btn.textContent = '此浏览器不支持朗读'; return; }
+  if(!canSpeak()){ btn.textContent = '这台设备没有语音引擎'; return; }
   if(speakingBtn === btn){ stopSpeech(); return; }
   stopSpeech();
   const body = plainForSpeech(text);
   if(!body) return;
-  // 按句切分排队：长回复可以中途停，也不会被浏览器截断
-  const chunks = body.match(/[^。！？!?；;\n]{1,90}[。！？!?；;]?/g) || [body];
   speakingBtn = btn;
   btn.classList.add('on'); btn.textContent = '停止朗读';
+  if(!hasWebSpeech()){
+    // 原生 TTS：念完由 App 回调 stopSpeech() 复位按钮；
+    // 有些引擎（或离线语音包缺失时）不回调，这里按字数估个时长兜底复位
+    try {
+      window.OliviaNative.speak(body);
+      const ms = Math.min(600000, 1200 + body.length * 240);
+      nativeTimer = setTimeout(() => { nativeTimer = null; stopSpeech(); }, ms);
+    }
+    catch(e){ stopSpeech(); }
+    return;
+  }
+  // 按句切分排队：长回复可以中途停，也不会被浏览器截断
+  const chunks = body.match(/[^。！？!?；;\n]{1,90}[。！？!?；;]?/g) || [body];
   let i = 0;
   const next = () => {
     if(speakingBtn !== btn) return;
@@ -883,6 +901,8 @@ function speakText(text, btn){
   };
   next();
 }
+// 原生 TTS 念完时由 App 调用
+window.__ttsDone = function(){ if(speakingBtn) stopSpeech(); };
 
 /* ---------- 把一次解读存成图片：牌面 + Olivia 的话 ---------- */
 function loadCanvasImage(src){
@@ -934,7 +954,10 @@ async function exportReading(inner, text){
 
   ctx.font = fBody;
   const lines = wrapCanvasLines(ctx, cleanForCanvas(text), MAXW);
-  const cw = 300, chh = 510, gap = 20;
+  const gap = 20;
+  const want = Math.min(Math.max(cards.length, 1), 3);
+  const cw = Math.min(320, Math.floor((MAXW - gap * (want - 1)) / want));
+  const chh = Math.round(cw * 1.7);
   const perRow = Math.max(1, Math.floor((MAXW + gap) / (cw + gap)));
   const rows = Math.ceil(cards.length / perRow);
   const extrasRows = extras.length ? 1 : 0;

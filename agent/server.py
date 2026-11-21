@@ -191,7 +191,9 @@ def _extra_requested(message):
 def _extra_reason(message):
     """补牌理由：把「补一张牌：」这类前缀去掉，剩下的算理由。"""
     text = _EXTRA_RE.sub("", str(message or ""))
-    return re.sub(r"^[\s：:，,、.。]+", "", text).strip()[:200]
+    # 「补一张牌」里剩余的量词/名词残渣（牌、张、个、来）也要清掉
+    text = re.sub(r"^[\s：:，,、.。]*[牌张个来]?[\s：:，,、.。]*", "", text)
+    return text.strip()[:200]
 
 
 def _record_extra(sid, result, card):
@@ -1081,7 +1083,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(os.environ.get("AGENT_PORT", "8765"))
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    # 默认只监听本机。要让手机（安卓 App）连上，设 AGENT_HOST=0.0.0.0 显式开放到局域网。
+    host = os.environ.get("AGENT_HOST", "127.0.0.1")
+    srv = ThreadingHTTPServer((host, port), Handler)
     scheduler.start(load_config)
     # PID 文件：供安装包的 uninstall 精确停止本服务（不误杀其它 python server.py）
     pid_path = os.path.join(BASE_DIR, "olivia.pid")
@@ -1090,7 +1094,10 @@ def main():
             f.write(str(os.getpid()))
     except Exception:
         pid_path = None
-    print("Olivia agent running at http://127.0.0.1:%d" % port)
+    shown = "127.0.0.1" if host in ("", "0.0.0.0") else host
+    print("Olivia agent running at http://%s:%d" % (shown, port))
+    if host == "0.0.0.0":
+        print("已对局域网开放：手机用本机 IP 访问，同网段的人也能打开，用完请改回默认。")
     print("Press Ctrl+C to stop.")
     try:
         srv.serve_forever()

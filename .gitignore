@@ -27,3 +27,10 @@ agent/olivia.pid
 
 # Built installer output
 installer/dist/
+
+# Android build output & local signing keys
+android/build/
+android/.gradle/
+android/keystore/
+*.apk
+*.aab
