@@ -70,6 +70,31 @@ def _post(url, headers, payload, timeout):
     return _open(req, timeout)
 
 
+def _norm_usage(u):
+    """把三种协议各自的 usage 形态归一成 {"in","out","total"}。
+
+    缺字段就记 0；整条没有用量信息时返回 None，前端据此决定显不显示。
+    """
+    if not isinstance(u, dict) or not u:
+        return None
+
+    def _i(*keys):
+        for k in keys:
+            v = u.get(k)
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, (int, float)):
+                return int(v)
+        return 0
+
+    pin = _i("prompt_tokens", "input_tokens", "promptTokenCount")
+    pout = _i("completion_tokens", "output_tokens", "candidatesTokenCount")
+    total = _i("total_tokens", "totalTokenCount") or (pin + pout)
+    if not (pin or pout):
+        return None
+    return {"in": pin, "out": pout, "total": total}
+
+
 def _sse_events(resp):
     """逐行读 SSE，yield (event_type, data_str)；兼容只有 data: 的流。"""
     event = None
@@ -119,8 +144,21 @@ def _openai_events(messages, cfg, tools):
     base = str(cfg.get("base_url", "")).lower()
     if ("127.0.0.1" in base or "localhost" in base) and cfg.get("think") is not True:
         payload["options"] = {"think": False}
-    resp = _post(url, _headers(cfg), payload, cfg.get("timeout", DEFAULT_TIMEOUT))
-    parts, calls = [], {}
+    # 用量统计：OpenAI 兼容端点在流末尾补一个只带 usage 的 chunk，但必须先
+    # 显式打开 include_usage。本地 Ollama 不认这个字段，直接跳过。
+    if not ("127.0.0.1" in base or "localhost" in base):
+        payload["stream_options"] = {"include_usage": True}
+    try:
+        resp = _post(url, _headers(cfg), payload, cfg.get("timeout", DEFAULT_TIMEOUT))
+    except RuntimeError as e:
+        # 少数第三方兼容网关会把不认识的 stream_options 当参数错误：
+        # 去掉它重试一次，宁可拿不到用量也不能让整轮对话失败。
+        if "stream_options" in str(e):
+            payload.pop("stream_options", None)
+            resp = _post(url, _headers(cfg), payload, cfg.get("timeout", DEFAULT_TIMEOUT))
+        else:
+            raise
+    parts, calls, usage = [], {}, None
     with resp:
         for _type, chunk in _sse_events(resp):
             if chunk == "[DONE]":
@@ -129,6 +167,9 @@ def _openai_events(messages, cfg, tools):
                 obj = json.loads(chunk)
             except Exception:
                 continue
+            u = obj.get("usage")
+            if isinstance(u, dict) and u:
+                usage = u
             try:
                 delta = obj["choices"][0].get("delta", {}) or {}
             except Exception:
@@ -154,7 +195,8 @@ def _openai_events(messages, cfg, tools):
     out = [calls[i] for i in sorted(calls) if calls[i]["name"]]
     if out:
         yield {"type": "tool_calls", "calls": out}
-    yield {"type": "done", "content": "".join(parts), "tool_calls": out}
+    yield {"type": "done", "content": "".join(parts), "tool_calls": out,
+           "usage": _norm_usage(usage)}
 
 
 # =====================================================================
@@ -260,7 +302,7 @@ def _anthropic_events(messages, cfg, tools):
     })
     resp = _post(url, headers, payload, cfg.get("timeout", DEFAULT_TIMEOUT))
 
-    parts, blocks = [], {}
+    parts, blocks, usage = [], {}, {}
     with resp:
         for event, data in _sse_events(resp):
             if event in ("ping", "message_stop"):
@@ -270,6 +312,25 @@ def _anthropic_events(messages, cfg, tools):
             except Exception:
                 continue
             etype = obj.get("type") or event
+            if etype == "message_start":
+                # 输入 token 只在 message_start 里给一次
+                u = (obj.get("message") or {}).get("usage") or {}
+                if u.get("input_tokens") is not None:
+                    usage["input_tokens"] = int(u["input_tokens"])
+                # 命中提示缓存的 token 也算进输入量，前端一并显示
+                extra_in = 0
+                for k in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+                    if u.get(k):
+                        extra_in += int(u[k])
+                if extra_in:
+                    usage["input_tokens"] = usage.get("input_tokens", 0) + extra_in
+            elif etype == "message_delta":
+                # 输出 token 在 message_delta 里累积给出
+                u = obj.get("usage") or {}
+                if u.get("output_tokens") is not None:
+                    usage["output_tokens"] = int(u["output_tokens"])
+                if u.get("input_tokens") is not None and "input_tokens" not in usage:
+                    usage["input_tokens"] = int(u["input_tokens"])
             if etype == "content_block_start":
                 b = obj.get("content_block") or {}
                 idx = obj.get("index", 0)
@@ -302,7 +363,8 @@ def _anthropic_events(messages, cfg, tools):
             calls.append(b)
     if calls:
         yield {"type": "tool_calls", "calls": calls}
-    yield {"type": "done", "content": "".join(parts), "tool_calls": calls}
+    yield {"type": "done", "content": "".join(parts), "tool_calls": calls,
+           "usage": _norm_usage(usage)}
 
 
 def anthropic_check(cfg):
@@ -428,13 +490,17 @@ def _gemini_events(messages, cfg, tools):
         headers["x-goog-api-key"] = key
     resp = _post(url, headers, payload, cfg.get("timeout", DEFAULT_TIMEOUT))
 
-    parts, calls = [], {}
+    parts, calls, usage = [], {}, {}
     with resp:
         for _event, data in _sse_events(resp):
             try:
                 obj = json.loads(data)
             except Exception:
                 continue
+            # Gemini 每个 chunk 都带 usageMetadata，最后一个才是整轮总数
+            um = obj.get("usageMetadata")
+            if isinstance(um, dict) and um:
+                usage = um
             cands = obj.get("candidates") or []
             if not cands:
                 continue
@@ -475,7 +541,8 @@ def _gemini_events(messages, cfg, tools):
         out.append(c)
     if out:
         yield {"type": "tool_calls", "calls": out}
-    yield {"type": "done", "content": "".join(parts), "tool_calls": out}
+    yield {"type": "done", "content": "".join(parts), "tool_calls": out,
+           "usage": _norm_usage(usage)}
 
 
 def gemini_check(cfg):

@@ -18,7 +18,9 @@ Routes:
 
 import json
 import os
+import re
 import time
+import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 import llm
@@ -40,6 +42,7 @@ PERSONA_PATH = os.path.join(REPO_DIR, "prompts", "persona.zh.md")
 PROPHECY_PATH = os.path.join(REPO_DIR, "prompts", "prophecy.zh.md")
 TONE_PATH = os.path.join(REPO_DIR, "prompts", "tone.zh.md")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
+EXTRAS_LOG = os.path.join(BASE_DIR, "data", "extras.jsonl")
 
 PRESETS = {
     "ollama": {
@@ -154,11 +157,59 @@ def load_tone():
         return ""
 
 
+def now_context():
+    """把「现在几点」写进 system。
+
+    语气层要求建议落到具体时间（「今晚睡前」「明天上午」），但没有这个锚点，
+    模型只能猜今天是哪天。这里每轮现算，不用缓存。
+    """
+    now = datetime.datetime.now()
+    week = "一二三四五六日"[now.weekday()]
+    return (
+        "\n\n【当前时间】现在是 %d年%d月%d日（星期%s）%02d:%02d。"
+        "涉及今天、今晚、明天、这周等相对时间的建议和定时提醒，都以这个时间为准；"
+        "不要使用你的训练数据里的日期，也不要编造年份。"
+        % (now.year, now.month, now.day, week, now.hour, now.minute)
+    )
+
+
 # ---- 两阶段抽牌：先出牌不解读，等来访者给出问题后再解读同一副牌 ----
 # 所有请求都带 session_id；新会话在 UI 里换一个 id，服务端状态随之隔离。
 _pending_draws = {}          # session_id -> {"result": ..., "at": timestamp}
 _awaiting_spread = {}        # session_id -> {"at": ...}：已问过「用哪个牌阵」，等来访者回答
+_last_spreads = {}           # session_id -> {"result": ..., "at": ...}：最近一次解读过的牌，供补牌复用
 _PENDING_TTL = 30 * 60       # 30 分钟后未提问，自动放弃这副牌 / 这次选阵
+
+# 补牌必须由来访者显式提出（界面上也有「补一张」按钮），模型不能自己补。
+_EXTRA_RE = re.compile(r"(补一张|补牌|补个牌|再来一张|再补一张|加一张)")
+
+
+def _extra_requested(message):
+    return bool(_EXTRA_RE.search(str(message or "")))
+
+
+def _extra_reason(message):
+    """补牌理由：把「补一张牌：」这类前缀去掉，剩下的算理由。"""
+    text = _EXTRA_RE.sub("", str(message or ""))
+    return re.sub(r"^[\s：:，,、.。]+", "", text).strip()[:200]
+
+
+def _record_extra(sid, result, card):
+    """补牌留痕：哪天、对哪副牌、因为什么补的，都记一笔，方便回看是否越界。"""
+    try:
+        os.makedirs(os.path.dirname(EXTRAS_LOG), exist_ok=True)
+        with open(EXTRAS_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "session": sid,
+                "spread": result.get("spread", ""),
+                "question": result.get("question", ""),
+                "name": card.get("name", ""),
+                "orientation": card.get("orientation", ""),
+                "reason": card.get("reason", ""),
+            }, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print("[extras] log failed: %s" % e)
 
 
 def _purge_pending():
@@ -169,6 +220,9 @@ def _purge_pending():
     for sid in [k for k, v in _awaiting_spread.items()
                 if now - v.get("at", 0) > _PENDING_TTL]:
         _awaiting_spread.pop(sid, None)
+    for sid in [k for k, v in _last_spreads.items()
+                if now - v.get("at", 0) > _PENDING_TTL]:
+        _last_spreads.pop(sid, None)
 
 
 def _draw_requested(message):
@@ -264,15 +318,36 @@ def _cards_payload(result):
             "orientation": c.get("orientation", ""),
             "image": c.get("image", ""),
         } for c in result.get("cards", [])],
+        "extras": [{
+            "position": c.get("position", "补牌"),
+            "position_meaning": c.get("position_meaning", ""),
+            "name": c.get("name", ""),
+            "orientation": c.get("orientation", ""),
+            "image": c.get("image", ""),
+            "reason": c.get("reason", ""),
+        } for c in (result.get("extras") or [])],
     }
+
+
+def _add_usage(totals, usage):
+    """把一轮（可能多次调用）的用量累加进来；拿不到用量就什么都不做。"""
+    if not isinstance(usage, dict):
+        return
+    for k in ("in", "out", "total"):
+        try:
+            totals[k] += int(usage.get(k) or 0)
+        except Exception:
+            pass
 
 
 def _pending_context(result, question):
     """解读轮注入的硬约束：解读眼前这副牌，不重抽、不换牌。"""
+    extras = result.get("extras") or []
     lines = [
         "【本轮解牌约束 · 必须遵守】",
         "来访者上一轮已经抽出一副牌，本轮才给出问题。请只解读下面这副已抽出的牌，",
-        "不得重新抽牌、换牌、补牌，也不得凭记忆换用别的牌面。",
+        ("不得重新抽牌、换牌，也不得再补牌、凭记忆换用别的牌面。" if not extras else
+         "不得重新抽牌、换牌，也不得凭记忆换用别的牌面。"),
         "牌阵：%s（%s）" % (result.get("spread", "未注明"), result.get("spread_desc", "")),
         "牌面与随牌传统牌意：",
     ]
@@ -283,6 +358,16 @@ def _pending_context(result, question):
         meaning = c.get("meaning", "")
         if meaning:
             lines.append("   传统牌意：" + str(meaning).replace("\n", " "))
+    if extras:
+        lines.append("来访者本轮主动要求补牌，理由是：%s" % (
+            "；".join(e.get("reason") or "（未说明理由）" for e in extras)))
+        for e in extras:
+            lines.append("补牌｜%s（%s）" % (e.get("name", ""), e.get("orientation", "")))
+            meaning = e.get("meaning", "")
+            if meaning:
+                lines.append("   传统牌意：" + str(meaning).replace("\n", " "))
+        lines.append("补牌只能作为补充视角，放在原牌之后解读：不得据此替换或否定原来的牌，"
+                     "也不得再自行增补。")
     lines.append("来访者的问题：%s" % (question or ""))
     lines.append("请按「原本牌意 → 牌阵位置 → 对应问题 → 落到情境」逐张解读；"
                  "这段牌面是既定依据，不可自行编造或替换。")
@@ -538,7 +623,10 @@ class Handler(BaseHTTPRequestHandler):
             asks_draw = _draw_requested(message)
             # 来访者正在回答「用哪个牌阵」：把回答映射成牌阵名，直接抽牌。
             waiting_spread = sid in _awaiting_spread and two_phase
-            chosen_spread = _spread_choice_from_reply(message) if waiting_spread else None
+            # 「补一张」里也含「一张」，不能让选阵回答把它误判成单张牌阵
+            chosen_spread = (_spread_choice_from_reply(message)
+                             if waiting_spread and not _extra_requested(message)
+                             else None)
             if chosen_spread:
                 _awaiting_spread.pop(sid, None)
                 message = chosen_spread + "抽牌"  # 让后续流程按点名牌阵处理
@@ -563,9 +651,23 @@ class Handler(BaseHTTPRequestHandler):
                     spread_choices = _spread_choices()
                     _awaiting_spread[sid] = {"at": time.time()}
 
+            # ---- 补牌：来访者主动要求时，在上一副牌上补一张 ----
+            # 补牌是显式路径：模型自己不能补，只有这条分支会往牌面里加牌，
+            # 且必须留下理由，避免「随手加一张」变成绕过牌阵的借口。
+            if pending_result is None and _extra_requested(message):
+                last = _last_spreads.get(sid)
+                if last:
+                    pending_result = last.get("result")
+                    extra = tools.extra_card(pending_result, _extra_reason(message))
+                    if extra.get("ok"):
+                        card = extra["card"]
+                        pending_result.setdefault("extras", []).append(card)
+                        _last_spreads[sid] = {"result": pending_result, "at": time.time()}
+                        _record_extra(sid, pending_result, card)
+
             # retrieve relevant knowledge for this turn
             context, used = knowledge.retrieve(message)
-            system = load_persona()
+            system = load_persona() + now_context()
             # 语气系统：Olivia 的"声音"——真实女性塔罗师的措辞 + 自然 NVC。
             # 放在人格之后、其余上下文之前，确保它稳定地盖住表达方式。
             if cfg.get("tone_enabled", True):
@@ -642,6 +744,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 emit({"meta": used})
                 full = []
+                usage_totals = {"in": 0, "out": 0, "total": 0}
                 # M2: keep the structured draw_cards result for this turn, so
                 # draw history records exactly the cards that were drawn.
                 turn_draw = None
@@ -671,6 +774,8 @@ class Handler(BaseHTTPRequestHandler):
                     # 用工具摘要的同一格式标出这是已抽出的牌，便于用户对照。
                     emit({"tool": tools.summary("draw_cards", pending_result)})
                     _pending_draws.pop(sid, None)
+                    # 记住这副牌：解读完之后若来访者还想补一张，从这里取回原牌面
+                    _last_spreads[sid] = {"result": pending_result, "at": time.time()}
                     # 牌在抽牌轮已经记入记忆，这里不再重复入库。
                     turn_draw = None
                     if _offline:
@@ -685,6 +790,8 @@ class Handler(BaseHTTPRequestHandler):
                             if ev["type"] == "token":
                                 full.append(ev["text"])
                                 emit({"token": ev["text"]})
+                            elif ev["type"] == "done":
+                                _add_usage(usage_totals, ev.get("usage"))
                 elif _offline:
                     # ---- 离线无牌对话：不调模型，给不越界的引导 ----
                     emit({"offline": True})
@@ -709,6 +816,7 @@ class Handler(BaseHTTPRequestHandler):
                                 round_calls = ev["calls"]
                             elif ev["type"] == "done":
                                 final_content = ev.get("content", "")
+                                _add_usage(usage_totals, ev.get("usage"))
                         if not round_calls:
                             for t in round_tokens:
                                 full.append(t)
@@ -766,6 +874,8 @@ class Handler(BaseHTTPRequestHandler):
                         })
                         msgs.extend(result_msgs)
                     # ---- end agentic loop ----
+                if usage_totals["total"]:
+                    emit({"usage": usage_totals})
                 emit({"done": True})
                 # persist this turn (rule-based extraction, ~0 ms) after stream
                 if cfg.get("memory_enabled", True) and full and preset_reply is None:

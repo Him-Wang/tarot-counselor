@@ -15,6 +15,7 @@ Everything is local and private; nothing is sent anywhere.
 
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import threading
@@ -288,7 +289,8 @@ def _is_due(task, now):
             return False
         # M4: a "once" task must fire exactly once, ever — not once per day.
         return now >= target and last_dt is None
-    if kind == "daily":
+    if kind in ("daily", "card"):
+        # card = 每日一牌：和 daily 一样按 cron_time 每天一次，只是内容由本地抽牌生成
         hh, mm = (task["cron_time"] or "09:00").split(":")
         target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
         if now < target:
@@ -333,6 +335,29 @@ def _fire_toast(title, body):
         return False
 
 
+def daily_card_message():
+    """每日一牌：本地客观抽一张，写成一条可读的晨间消息。
+
+    不调用模型，所以没有 key / 模型不可用时也照常送达。
+    """
+    try:
+        import tools as tools_mod
+        res = tools_mod.draw_cards(spread="单张")
+        c = (res.get("cards") or [{}])[0]
+        name = c.get("name", "")
+        ori = c.get("orientation", "")
+        meaning = re.sub(r"\s+", " ", str(c.get("meaning") or "")).strip()
+        if len(meaning) > 200:
+            meaning = meaning[:200] + "…"
+        out = "今天这张牌：%s（%s）。" % (name, ori)
+        if meaning:
+            out += meaning
+        out += "不用急着解它，先看看今天有没有哪一刻让你想起这张牌。"
+        return out
+    except Exception as e:
+        return "今天的牌没能抽出来（%s），晚一点再试试。" % e
+
+
 def run_due_tasks(cfg_loader):
     """Check all enabled tasks, generate + deliver proactive messages.
 
@@ -359,22 +384,26 @@ def run_due_tasks(cfg_loader):
         if not _is_due(task, now):
             continue
         try:
-            if cfg is None:
-                cfg = cfg_loader()
-            mem_ctx = memory.context(task["intent"])
-            system = load_persona_short()
-            system += "\n\n你是主动关怀助手。根据下面的意图，写一条简短、温暖、自然的中文消息（1-3 句），像朋友发来的关心，不要机械、不要问太多问题、不要使用表情符号。只输出消息正文。"
-            if mem_ctx:
-                system += "\n\n" + mem_ctx
-            user = "主动关怀意图：" + task["intent"]
-            content = (llm.complete(
-                [{"role": "system", "content": system},
-                 {"role": "user", "content": user}], cfg) or "").strip()
-            if not content:
-                content = "今天过得怎么样？我在，想说的时候随时找我。"
-            content = content[:600]
+            if task["kind"] == "card":
+                # 每日一牌：纯本地抽牌，不需要模型也不需要 key
+                content = daily_card_message()
+            else:
+                if cfg is None:
+                    cfg = cfg_loader()
+                mem_ctx = memory.context(task["intent"])
+                system = load_persona_short()
+                system += "\n\n你是主动关怀助手。根据下面的意图，写一条简短、温暖、自然的中文消息（1-3 句），像朋友发来的关心，不要机械、不要问太多问题、不要使用表情符号。只输出消息正文。"
+                if mem_ctx:
+                    system += "\n\n" + mem_ctx
+                user = "主动关怀意图：" + task["intent"]
+                content = (llm.complete(
+                    [{"role": "system", "content": system},
+                     {"role": "user", "content": user}], cfg) or "").strip()
+                if not content:
+                    content = "今天过得怎么样？我在，想说的时候随时找我。"
         except Exception as e:
             content = "（主动消息生成失败：%s）" % e
+        content = content[:600]
 
         conn = _conn()
         try:

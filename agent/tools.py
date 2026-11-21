@@ -74,6 +74,18 @@ TOOL_GUIDE = """【可用工具 / 必须遵守】
 - save_note(title, content, tags)：来访者要求「记到知识库/归档/笔记本」、或值得长期留存的
   结构化内容（问卷、清单、重要决定）时调用。它与 save_memory 不同：这里是用户主动归档的笔记。
 - search_notes(query)：需要调阅用户此前归档的笔记/知识库内容时调用。
+- lookup_card(name, orientation)：来访者问到某一张具体的牌、或要核对牌名对应的含义时，
+  用这个**按牌名直查**，不要拿 search_knowledge 去碰运气。牌名写「死神」「宝剑八」。
+- recall_memory(what)：他问「上次我说过什么」「你记得我什么」「之前抽过什么牌」，
+  或你需要主动回想他这个人时调用。what=facts 记下的线索 / profile 稳定画像 /
+  draws 抽牌历史 / forget 删掉记错的一条（此时必须给 text，用原文或片段）。
+  记错了就当场删，不要将错就错继续引用。
+- schedule_reminder(name, intent, kind, run_at)：他说「明晚八点提醒我」「每天早上问我一句」
+  「过两小时来看看我」时调用。到点 Olivia 会自己写一条消息进收件箱。
+  kind=once 必须用 run_at（YYYY-MM-DD HH:MM，基于上面给你的当前时间推算，不要自己编年份）；
+  daily/weekly 用 cron_time（HH:MM）；interval 用 interval_min。设完把时间复述一遍让他确认。
+- 补牌：**你不能自己补牌**。只有来访者在界面上主动点「补一张」时，系统才会补一张进来，
+  并把补牌理由一并交给你；那种情况下可以解读它，但不得据此替换原来的牌。
 调用工具后，依据工具返回的结果继续；工具没给的信息绝不编造。""" % spreads_mod.catalogue()
 
 
@@ -327,6 +339,40 @@ def draw_cards(spread="三张", question="", seed=None):
         "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
                 "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
                 "不要自行编造牌意，也不要把其他牌位的含义套到这里。",
+    }
+
+
+def extra_card(result, reason=""):
+    """来访者主动要求的「补一张」。
+
+    补牌是模型不能做的动作（见 draw_cards 的 note），只能由用户在界面上点按钮
+    触发；因此这个函数不进 TOOLS 表、也没有对应的 execute 分支，只由 server
+    在识别到补牌请求时调用。补出的牌从 78 张里挑一张这副牌里没出现过的。
+    """
+    cards = list((result or {}).get("cards") or [])
+    if not cards:
+        return {"ok": False, "reason": "还没有可补牌的牌面"}
+    used = {c.get("name") for c in cards}
+    pool = [n for n in DECK if n not in used]
+    if not pool:
+        return {"ok": False, "reason": "这副牌已经抽满了 78 张，无从再补"}
+    rng = random.SystemRandom()
+    name = rng.choice(pool)
+    orientation = "逆位" if rng.getrandbits(1) else "正位"
+    reason = str(reason or "").strip()
+    return {
+        "ok": True,
+        "reason": reason,
+        "card": {
+            "position": "补牌",
+            "position_meaning": "来访者主动补的一张，用来看原先漏掉的侧面",
+            "name": name,
+            "orientation": orientation,
+            "image": card_image(name),
+            "meaning": knowledge.get_card_meaning(name, orientation),
+            "extra": True,
+            "reason": reason,
+        },
     }
 
 
