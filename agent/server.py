@@ -22,6 +22,7 @@ import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 import llm
+import provider
 import knowledge
 import memory
 import tools
@@ -72,6 +73,20 @@ PRESETS = {
         "model": "deepseek-chat",
         "note": "旧版别名，已由 deepseek-chat 取代。",
     },
+    "anthropic": {
+        "protocol": "anthropic",
+        "base_url": "https://api.anthropic.com/v1",
+        "api_key": "",
+        "model": "claude-sonnet-4-5-20250929",
+        "note": "Anthropic Claude（原生 Messages API，流式+工具调用）。填入 Anthropic API key。",
+    },
+    "gemini": {
+        "protocol": "gemini",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "api_key": "",
+        "model": "gemini-2.5-flash",
+        "note": "Google Gemini（原生 generateContent SSE，流式+工具调用）。填入 Google AI key。",
+    },
     "custom": {
         "base_url": "",
         "api_key": "",
@@ -82,6 +97,7 @@ PRESETS = {
 
 DEFAULT_CONFIG = {
     "backend": "deepseek-flash",
+    "protocol": "auto",  # openai / anthropic / gemini / auto（按 base_url 猜）
     "base_url": PRESETS["deepseek-flash"]["base_url"],
     "api_key": "",
     "model": PRESETS["deepseek-flash"]["model"],
@@ -412,7 +428,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/config":
             cfg = load_config()
-            for k in ("backend", "base_url", "api_key", "model", "temperature", "timeout",
+            for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature", "timeout",
                       "think", "tools_enabled", "memory_enabled", "prophecy_enabled",
                       "two_phase_draw", "tone_enabled"):
                 if k in body:
@@ -437,14 +453,14 @@ class Handler(BaseHTTPRequestHandler):
             saved = load_config()
             effective_key = _effective_api_key(saved, body.get("api_key"))
             cfg = dict(saved)
-            for k in ("backend", "base_url", "api_key", "model", "temperature",
+            for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature",
                       "timeout", "think", "tools_enabled", "memory_enabled",
                       "prophecy_enabled", "tone_enabled", "two_phase_draw"):
                 if k in body:
                     cfg[k] = body[k]
             cfg["api_key"] = effective_key
             try:
-                reply = llm.check(cfg)
+                reply = provider.check(cfg)
                 self._send_json({"ok": True, "reply": reply})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
@@ -456,6 +472,35 @@ class Handler(BaseHTTPRequestHandler):
             sid = str(body.get("session_id") or "default")
             cfg = load_config()
             cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
+
+            # ---- 安全闸门（服务端权威）----
+            # 危机判定绝不交给模型"自觉调用 crisis_check"：那是个工具，
+            # 模型可能不调、也可能抽完牌才调。这里在 /api/chat 的最入口、
+            # 早于视觉识别 / 抽牌 / LLM / 记忆写入，一律先过闸门。
+            # 命中即切断：牌不发、图不识别、话不进模型、记忆不落库。
+            import safety as _safety
+            _crisis = _safety.detect(message)
+            if _crisis:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+
+                def _emit_gate(obj):
+                    self.wfile.write(
+                        ("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
+                    self.wfile.flush()
+
+                _emit_gate({"safety": _crisis})
+                _emit_gate({"token": _safety.response_for(_crisis)})
+                _emit_gate({"done": True})
+                return
+            # 历史里若残留危机文本（上一轮被拦截的话前端仍会记进 history），
+            # 也一并剔除，避免模型拿到危机上下文继续占卜。
+            history = [h for h in history
+                       if not (isinstance(h, dict)
+                               and _safety.detect(str(h.get("content", ""))))]
 
             # ---- vision bridge: cloud VLM describes images, feed text to main model ----
             vision_ctx = ""
@@ -624,7 +669,7 @@ class Handler(BaseHTTPRequestHandler):
                     _pending_draws.pop(sid, None)
                     # 牌在抽牌轮已经记入记忆，这里不再重复入库。
                     turn_draw = None
-                    for ev in llm.stream_chat_events(msgs, cfg, tools=None):
+                    for ev in provider.stream_chat_events(msgs, cfg, tools=None):
                         if ev["type"] == "token":
                             full.append(ev["text"])
                             emit({"token": ev["text"]})
@@ -635,7 +680,7 @@ class Handler(BaseHTTPRequestHandler):
                         round_calls = []
                         final_content = ""
                         round_tokens = []
-                        for ev in llm.stream_chat_events(
+                        for ev in provider.stream_chat_events(
                                 msgs, cfg, tools=tools.TOOLS if use_tools else None):
                             if ev["type"] == "token":
                                 # 抽牌轮先缓冲模型文本；若真的抽了牌，只输出牌面与固定提问，

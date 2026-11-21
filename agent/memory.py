@@ -20,6 +20,8 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 
+import safety as _safety
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "memory.db")
@@ -37,7 +39,19 @@ CARD_NAMES = _MAJORS + [s + r for s in _SUITS for r in _RANKS]
 
 STOP = set("的 了 和 是 在 我 你 他 她 它 们 这 那 有 就 不 也 都 而 及 与 或 一个 什么 怎么 一些 可以 需要 是否 请 帮 我想 觉得 因为 所以 但是 如果 已经 还是 现在 自己 一下 吧 呢 吗 啊 呀 哦 嗯".split())
 
-CRISIS_RE = re.compile(r"自杀|自残|不想活|活不下去|结束生命|伤害自己|轻生|割腕|跳楼|寻死")
+def is_crisis_text(text):
+    """统一走 safety.py 的危机闸门（原来的 9 词窄表已废弃）。"""
+    return _safety.is_crisis(text)
+
+
+# 保留向后兼容的 CRISIS_RE 名称，但改用宽口径判定（供外部旧引用使用）。
+class _CrisisProxy:
+    @staticmethod
+    def search(text):
+        return is_crisis_text(text)
+
+
+CRISIS_RE = _CrisisProxy()
 
 
 # ---------- low level ----------

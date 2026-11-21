@@ -44,10 +44,12 @@ python server.py          # 仅依赖 Python 3 标准库
 | 后端 | 配置 |
 |---|---|
 | **DeepSeek**（默认） | 填自己的 key（platform.deepseek.com 申请）；预设 `deepseek-flash`（快而省，默认）、`deepseek-v4-pro`、`deepseek-chat`，模型框也可手填 `deepseek-reasoner` |
+| **Anthropic** | 原生 Messages API：预设 `anthropic`，填 `sk-ant-…`，模型如 `claude-sonnet-4-5-20250929` |
+| **Gemini** | 原生 GenerateContent API：预设 `gemini`，填 key，模型如 `gemini-2.5-flash` |
 | **Ollama** | `ollama serve` 并拉好模型，`base_url` 填 `http://127.0.0.1:<端口>/v1`，key 留空 |
-| 其他 | 任意 OpenAI 兼容端点均可 |
+| 其他 | 「协议」选 `auto`（按 base_url 自动判断）或 `openai`，任意 OpenAI 兼容端点均可 |
 
-key 只存本机 `agent/config.json`（已 gitignore）。**抽牌本身不需要 key**，只有解读才调用大模型。
+三种协议（OpenAI 兼容 / Anthropic Messages / Gemini GenerateContent）统一走同一套 agentic loop 与工具调用，设置里可切换；**抽牌本身不需要 key**，只有解读才调用大模型。key 只存本机 `agent/config.json`（已 gitignore）。
 
 ---
 
@@ -91,6 +93,9 @@ key 只存本机 `agent/config.json`（已 gitignore）。**抽牌本身不需�
 | 🗂 **个人知识库** | 主动策展的笔记，可归档、检索、导出 Markdown |
 | 👁 **视觉识别** | 任意 OpenAI 兼容 VLM 看图，主模型仍是纯文本，不假装看见 |
 | ⏰ **主动关怀与盯事** | 定时任务 + 条件触发（网页 / RSS / JSON / 天气），Windows 桌面通知 |
+| 🔀 **三种模型协议** | OpenAI 兼容 / Anthropic Messages / Gemini GenerateContent，同一套工具调用，设置里随时切 |
+| 📖 **会话簿** | 本机浏览器保存历次对话，可命名、回访、深链 `#/chat/<id>`；刷新不丢， crisis 只存占位不存原文 |
+| ✅ **改完能自查** | `tests/` 白盒 + 黑盒两套自查脚本，纯标准库、不碰真实 API，一键验证安全闸门 / 抽牌 / 协议 / 路由 |
 | 🔒 **零第三方依赖** | Agent 仅用 Python 3 标准库；数据全部留在本机 |
 
 ### 分层人格
@@ -124,7 +129,8 @@ key 只存本机 `agent/config.json`（已 gitignore）。**抽牌本身不需�
 │   └── SKILL.md                # 按需触发的技能格式
 ├── agent/                      # 本地网页 Agent
 │   ├── server.py               # HTTP 服务与全部 API 路由
-│   ├── llm.py / tools.py       # 后端调用 / 工具定义与执行
+│   ├── llm.py / provider.py    # OpenAI / Anthropic / Gemini 三协议调用
+│   ├── tools.py                # 工具定义与执行
 │   ├── safety.py               # 服务端危机闸门（早于抽牌与模型）
 │   ├── spreads.py              # 39 个牌阵的唯一来源
 │   ├── cards/                  # 78 张 RWS 牌面图
@@ -141,6 +147,22 @@ key 只存本机 `agent/config.json`（已 gitignore）。**抽牌本身不需�
 ```
 
 牌义依据《塔罗智慧》《21世纪的塔罗书》《其实你已经很塔罗了》三书要义，用**原创中文按 RWS 传统重写**；`牌间关系.md` 据《塔罗智慧》整理，均非照搬。
+
+---
+
+## ✅ 改完能自查
+
+只依赖 Python 3 标准库，**不碰真实模型 API**（无 key 也能跑）：
+
+```bash
+python tests/test_whitebox.py     # 白盒：查源码结构与纯函数
+python tests/test_blackbox.py     # 黑盒：起独立服务，发真实 HTTP 请求
+```
+
+- **白盒**：安全闸门 18 条用例（含否定句、主谓宾句式、梦境排除）、三协议识别与消息/工具转换、39 牌阵布局完整性、抽牌不放回、危机文本不入库、服务端集成点断言。
+- **黑盒**：在独立端口起服务，验证危机请求**不发牌、不调工具、先给求助资源**；本地抽牌出牌正确且不放回；history 危机残留不二次报警；深链路由与协议选择器已在首页；牌图可访问、目录穿越被拒。
+
+> 黑盒用 `AGENT_PORT` 起独立端口，不会占用你正在跑的 8765 实例；可用 `--port` 改端口。
 
 ---
 

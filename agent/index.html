@@ -11,7 +11,8 @@
     --ink:#42425a; --muted:#67677f; --faint:#8b8ba2;
     --violet:#9a86c2; --accent:#9a86c2; --accent2:#7c68a6;
     --accent-strong:#6f5a97; --accent-ink:#6b598f;
-    --ok:#4f9e78; --err:#c26274; --badge:#a86087;
+    --ok:#4f9e78; --err:#a83c52; --badge:#a86087;
+    --warn-ink:#6b4710; /* 警示/娱乐提示文字：在 --bg 上 ≥7:1 */
     --radius:16px; --radius-sm:11px;
     --fs-min:12px;
     --line:rgba(120,126,150,.22);
@@ -225,8 +226,26 @@
   .mem-empty{color:var(--muted);font-size:13px;padding:18px;text-align:center}
   .switch{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);margin-bottom:12px;cursor:pointer;padding:4px 0}
   .switch input{width:24px;height:24px;flex:0 0 24px;margin:0;accent-color:var(--accent-strong);cursor:pointer}
+  /* 默认开启且不可关闭的语气系统：视觉上像开关，但不能点 */
+  .switch-static{cursor:default;opacity:1}
+  .lock-tag{font-size:12px;color:var(--accent-ink);background:rgba(124,104,166,.12);border-radius:20px;padding:2px 9px;white-space:nowrap}
   .danger{color:var(--err)}
   .danger:hover{color:var(--err);box-shadow:var(--sh-sm)}
+  /* 会话簿：Olivia 的持久会话，像塔罗师手边的来访者记事簿 */
+  #shelfList{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:8px}
+  .shelf-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:12px;cursor:pointer;background:var(--panel);transition:background .15s}
+  .shelf-item:hover{background:var(--accent-soft)}
+  .shelf-item.active{border-color:var(--accent-strong);background:var(--accent-soft)}
+  .shelf-item .grow{flex:1;min-width:0}
+  .shelf-item .st{font-size:14px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .shelf-item .sm{font-size:12px;color:var(--muted);margin-top:2px}
+  .shelf-item .del{border:none;background:none;color:var(--muted);font-size:16px;padding:4px 8px;cursor:pointer}
+  .shelf-item .del:hover{color:var(--err)}
+  .safety-line{display:inline-block;margin:6px 0 2px;padding:5px 10px;border-radius:10px;
+    background:#fdeaea;color:#9b2c2c;font-size:12px;border:1px solid #f3c9c9}
+  body.dark .safety-line{background:#4a2020;color:#ffc9c9;border-color:#7a3333}
+  .route-chip{font-size:11px;color:var(--muted);margin-left:6px}
 </style>
 </head>
 <body>
@@ -238,6 +257,7 @@
     <span class="chip" id="backendChip">未配置</span>
     <span class="prophecy-chip" id="prophecyChip" title="预言模式已开启：解读仅供娱乐">🔮 预言模式 · 仅供娱乐</span>
     <button id="careBtn" title="主动关怀">关怀<span id="careBadge" class="care-badge" hidden>0</span></button>
+    <button id="shelfBtn" title="会话簿：本机保存的历次对话">会话簿</button>
     <button id="kbBtn">知识库</button>
     <button id="memoryBtn">记忆</button>
     <button id="settingsBtn">设置</button>
@@ -270,9 +290,22 @@
         <option value="deepseek-v4-pro">DeepSeek V4 Pro（强）</option>
         <option value="deepseek-chat">DeepSeek Chat（旧版）</option>
         <option value="ollama">本机 Ollama</option>
+        <option value="anthropic">Anthropic Claude（原生协议）</option>
+        <option value="gemini">Google Gemini（原生协议）</option>
         <option value="custom">自定义（OpenAI 兼容）</option>
       </select>
       <div class="note" id="presetNote"></div>
+    </div>
+
+    <div class="field">
+      <label>模型协议</label>
+      <select id="protocol">
+        <option value="auto">自动识别（按接口地址猜）</option>
+        <option value="openai">OpenAI 兼容（/chat/completions）</option>
+        <option value="anthropic">Anthropic Messages API</option>
+        <option value="gemini">Gemini generateContent（SSE）</option>
+      </select>
+      <div class="note">只有选了对应协议，才会用原生流式与工具调用格式；「自动」按接口地址识别。</div>
     </div>
 
     <div class="field">
@@ -288,10 +321,12 @@
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
     <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（检索/记忆/知识库/危机检查；抽牌是本地动作，不受此开关影响）</label>
-    <label class="switch"><input type="checkbox" id="toneEnabled"> 💜 语气系统（奥莉薇娅的女性塔罗师口吻 + 自然非暴力沟通）</label>
-    <p class="desc" style="margin:-6px 0 12px;font-size:12px">开启后，Olivia 会用更贴近真人的女性塔罗师语气说话，自然地先听见你的感受、再给方向；不喊术语、不演角色。关闭即恢复中性表达。</p>
-    <label class="switch"><input type="checkbox" id="prophecyEnabled"> 🔮 预言模式 <span style="color:#9a6a1f">（仅供娱乐，可随时开关）</span></label>
-    <p class="desc" style="margin:-6px 0 12px;font-size:12px">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
+    <!-- 语气系统默认开启、不可关闭：保留隐藏的 checked+disabled 输入框以兼容 collectConfig()，UI 上只做说明 -->
+    <input type="checkbox" id="toneEnabled" checked disabled style="display:none">
+    <div class="switch switch-static" title="语气系统默认开启，不可关闭">💜 语气系统（奥莉薇娅的女性塔罗师口吻 + 自然非暴力沟通）<span class="lock-tag">默认开启 · 不可关闭</span></div>
+    <p class="desc" style="margin:4px 0 12px;font-size:12px">Olivia 始终用更贴近真人的女性塔罗师语气说话，自然地先听见你的感受、再给方向；不喊术语、不演角色。这是她的一部分，无法关闭。</p>
+    <label class="switch"><input type="checkbox" id="prophecyEnabled"> 🔮 预言模式 <span style="color:var(--warn-ink)">（仅供娱乐，可随时开关）</span></label>
+    <p class="desc" style="margin:4px 0 12px;font-size:12px">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
 
     <details style="margin:14px 0;border-top:1px solid var(--line);padding-top:12px">
       <summary style="cursor:pointer;color:var(--accent-ink)">👁 视觉识别插件（云端 VLM，选填）</summary>
@@ -368,6 +403,18 @@
     </div>
     <div class="status" id="kbStatus"></div>
     <div class="actions"><button class="primary" id="kbCloseBtn">完成</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="shelfOverlay" role="dialog" aria-modal="true" aria-labelledby="title-shelfOverlay">
+  <div class="sheet">
+    <h2 id="title-shelfOverlay">会话簿</h2>
+    <p class="desc">每次对话都留一本册子，只存在这台电脑的浏览器里。刷新、关页都还在；点开地址栏的 <code>#/chat/…</code> 也能直接回到那一页。API 密钥不随册子保存。</p>
+    <div id="shelfList">加载中…</div>
+    <div class="actions">
+      <button id="shelfNewBtn">＋ 新的一页</button>
+      <button class="primary" id="shelfCloseBtn">关闭</button>
+    </div>
   </div>
 </div>
 
@@ -553,19 +600,126 @@ let pendingImages = [];  // data URLs queued for the next message
 const newSessionId = () => 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
 let sessionId = newSessionId();
 
+/* ---------- 会话簿：本机持久化 + hash 路由（Olivia 自己的记事簿） ----------
+   和别家的「路由优先」不同，Olivia 是塔罗师手边的一摞册子：
+   · 每本册子 = 一次对话，保存在浏览器 localStorage，只存文字/牌面，不存密钥；
+   · 地址栏 #/chat/<id> 是这本册子的书脊，刷新、关页、分享地址都能翻回来；
+   · 会话不上传服务器（服务端记忆是另一回事），完全本机私有。
+--------------------------------------------------------------------------- */
+const SHELF_KEY = 'olivia.shelf.v1';
+const SHELF_ACTIVE_KEY = 'olivia.shelf.active.v1';
+const DEFAULT_GREETING = '你好，我是 Olivia（奥莉薇娅）。坐吧，慢慢说——今天是什么把你带到我这儿来的？';
+
+function loadShelf(){
+  try { const a = JSON.parse(localStorage.getItem(SHELF_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function saveShelf(shelf){
+  try { localStorage.setItem(SHELF_KEY, JSON.stringify(shelf)); } catch(e){}
+}
+function shelfTitle(hist){
+  const first = (hist || []).find(m => m && m.role === 'user');
+  if(!first) return '未命名的一页';
+  const t = String(first.content || '').replace(/\s+/g, ' ');
+  return t.length > 18 ? t.slice(0, 18) + '…' : t;
+}
+function persistSession(){
+  const shelf = loadShelf();
+  let s = shelf.find(x => x.id === sessionId);
+  if(!s){ s = { id: sessionId, title: '', history: [], updatedAt: Date.now() }; shelf.unshift(s); }
+  s.history = history.slice(-40);
+  s.title = shelfTitle(history);
+  s.updatedAt = Date.now();
+  saveShelf(shelf);
+  try { localStorage.setItem(SHELF_ACTIVE_KEY, sessionId); } catch(e){}
+}
+function setRoute(id, push){
+  const url = '#/chat/' + id;
+  if(window.location.hash === url) return;
+  try {
+    if(push) window.history.pushState({ sid: id }, '', url);
+    else window.history.replaceState({ sid: id }, '', url);
+  } catch(e){ window.location.hash = url; }
+}
+function renderHistory(){
+  chat.innerHTML = '';
+  if(!history.length){
+    const w = document.createElement('div'); w.className = 'msg assistant';
+    const inn = document.createElement('div');
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = 'Olivia';
+    const bub = document.createElement('div'); bub.className = 'bub'; bub.textContent = DEFAULT_GREETING;
+    inn.appendChild(who); inn.appendChild(bub); w.appendChild(inn); chat.appendChild(w);
+    return;
+  }
+  history.forEach(m => {
+    const { bub, inner } = addMsg(m.role || 'assistant', m.content || '');
+    if(m.cards) renderCards(inner, bub, m.cards);
+    if(m.safety) bub.classList.add('safety-line');
+  });
+  chat.scrollTop = chat.scrollHeight;
+}
+function openSession(id, push){
+  const shelf = loadShelf();
+  const s = shelf.find(x => x.id === id);
+  persistSession();                       // 先把当前这本合上
+  sessionId = id;
+  history = s ? (s.history || []).slice() : [];
+  pendingImages = []; renderImages();
+  renderHistory();
+  setRoute(id, push);
+  try { localStorage.setItem(SHELF_ACTIVE_KEY, id); } catch(e){}
+}
+function newSession(){
+  persistSession();
+  openSession(newSessionId(), true);
+  addMsg('assistant', '新的一页。这次，你想从哪里说起？');
+}
+function renderShelf(){
+  const shelf = loadShelf().slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const list = $('shelfList');
+  list.innerHTML = '';
+  if(!shelf.length){ list.textContent = '（还没有保存的会话，聊几句就有了。）'; return; }
+  shelf.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'shelf-item' + (s.id === sessionId ? ' active' : '');
+    const g = document.createElement('div'); g.className = 'grow';
+    const st = document.createElement('div'); st.className = 'st'; st.textContent = s.title || '未命名的一页';
+    const sm = document.createElement('div'); sm.className = 'sm';
+    const d = new Date(s.updatedAt || Date.now());
+    sm.textContent = (s.history || []).length + ' 条 · ' + d.toLocaleString('zh-CN');
+    g.appendChild(st); g.appendChild(sm); el.appendChild(g);
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '×'; del.title = '删除这一页';
+    del.onclick = (ev) => {
+      ev.stopPropagation();
+      saveShelf(loadShelf().filter(x => x.id !== s.id));
+      renderShelf();
+      if(s.id === sessionId) newSession();
+    };
+    el.appendChild(del);
+    el.onclick = () => { closeSheet($('shelfOverlay')); openSession(s.id, true); };
+    list.appendChild(el);
+  });
+}
+
 const PRESET_NOTE = {
   'deepseek-flash': 'DeepSeek V4.1-Flash：快、便宜，默认带思考。填自己的 API key（platform.deepseek.com）。',
   'deepseek-v4-pro': 'DeepSeek V4-Pro：更强，适合复杂问题。填自己的 API key。',
   'deepseek-chat': '旧版 deepseek-chat，兼容老配置。填自己的 API key。',
   ollama: '先运行 ollama serve 并拉好模型；API key 留空，模型名填本地已有的（如 qwen2.5:7b）。',
+  anthropic: 'Anthropic Claude 原生 Messages API：填 Anthropic key，协议选 Anthropic。',
+  gemini: 'Google Gemini 原生 generateContent：填 Google AI key，协议选 Gemini。',
   custom: '任意 OpenAI 兼容端点：/chat/completions 接口。自行填写全部字段。'
 };
+// [base_url, model, protocol]
 const PRESET_MAP = {
-  'deepseek-flash': ['https://api.deepseek.com/v1','deepseek-flash'],
-  'deepseek-v4-pro': ['https://api.deepseek.com/v1','deepseek-v4-pro'],
-  'deepseek-chat': ['https://api.deepseek.com/v1','deepseek-chat'],
-  ollama: ['http://127.0.0.1:11434/v1','qwen2.5:7b'],
-  custom: ['','']
+  'deepseek-flash': ['https://api.deepseek.com/v1','deepseek-flash','auto'],
+  'deepseek-v4-pro': ['https://api.deepseek.com/v1','deepseek-v4-pro','auto'],
+  'deepseek-chat': ['https://api.deepseek.com/v1','deepseek-chat','auto'],
+  ollama: ['http://127.0.0.1:11434/v1','qwen2.5:7b','auto'],
+  anthropic: ['https://api.anthropic.com/v1','claude-sonnet-4-5-20250929','anthropic'],
+  gemini: ['https://generativelanguage.googleapis.com/v1beta','gemini-2.5-flash','gemini'],
+  custom: ['','','auto']
 };
 
 function addMsg(role, text){
@@ -805,6 +959,7 @@ async function loadConfig(){
   // 旧配置里的 'deepseek' 别名映射到新的 deepseek-chat 预设
   if (c.backend === 'deepseek') c.backend = 'deepseek-chat';
   $('preset').value = PRESET_MAP[c.backend] ? c.backend : 'deepseek-flash';
+  $('protocol').value = ['openai','anthropic','gemini'].includes(c.protocol) ? c.protocol : 'auto';
   $('baseUrl').value = c.base_url || '';
   $('model').value = c.model || '';
   $('apiKey').value = ''; // never prefill the secret
@@ -812,7 +967,7 @@ async function loadConfig(){
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
   $('toolsEnabled').checked = c.tools_enabled !== false;
-  $('toneEnabled').checked = c.tone_enabled !== false;
+  $('toneEnabled').checked = true; // 语气系统恒定开启，忽略配置里可能残留的 false
   $('prophecyEnabled').checked = c.prophecy_enabled === true;
   $('prophecyChip').classList.toggle('on', c.prophecy_enabled === true);
   $('presetNote').textContent = PRESET_NOTE[c.backend] || '';
@@ -821,21 +976,17 @@ async function loadConfig(){
 }
 
 $('preset').addEventListener('change', e => {
-  const v = e.target.value; const p = PRESET_MAP[v] || ['',''];
-  $('baseUrl').value = p[0]; $('model').value = p[1];
+  const v = e.target.value; const p = PRESET_MAP[v] || ['','','auto'];
+  $('baseUrl').value = p[0]; $('model').value = p[1]; $('protocol').value = p[2] || 'auto';
   $('presetNote').textContent = PRESET_NOTE[v] || '';
 });
 
 $('settingsBtn').onclick = () => { openSheet($('overlay')); };
 $('closeBtn').onclick = () => { closeSheet($('overlay')); };
-$('newBtn').onclick = () => {
-  history = []; chat.innerHTML='';
-  // 新会话换 id：服务端「已抽出待解读」的牌不会串到这一页。
-  sessionId = newSessionId();
-  // m-15: don't let queued images leak into an unrelated new conversation
-  pendingImages = []; renderImages();
-  addMsg('assistant','新的一页。这次，你想从哪里说起？');
-};
+$('shelfBtn').onclick = () => { renderShelf(); openSheet($('shelfOverlay')); };
+$('shelfCloseBtn').onclick = () => { closeSheet($('shelfOverlay')); };
+$('shelfNewBtn').onclick = () => { closeSheet($('shelfOverlay')); newSession(); };
+$('newBtn').onclick = () => { newSession(); };
 
 $('prophecyEnabled').addEventListener('change', e => {
   $('prophecyChip').classList.toggle('on', e.target.checked);
@@ -844,6 +995,7 @@ $('prophecyEnabled').addEventListener('change', e => {
 function collectConfig(){
   return {
     backend: $('preset').value,
+    protocol: $('protocol').value,
     base_url: $('baseUrl').value.trim(),
     model: $('model').value.trim(),
     api_key: $('apiKey').value.trim(),
@@ -899,7 +1051,7 @@ async function send(){
   const meta = document.createElement('div'); meta.className='meta-line';
   inner.insertBefore(meta, bub);
   streaming = true; $('sendBtn').disabled=true;
-  let full='';
+  let full='', lastCards=null, safetyKind=null;
 
   // 打字机队列：SSE 事件按到达顺序入队，再依次演出。抽牌轮会先收到
   // meditate（默念引导语）→ cards（翻牌）→ token（提问），于是形成
@@ -934,8 +1086,11 @@ async function send(){
         badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
         chat.scrollTop=chat.scrollHeight;
       }
+      if(obj.safety){ safetyKind=obj.safety; const sl=document.createElement('div');
+        sl.className='safety-line'; sl.textContent='🛡 安全闸门已启动 · Olivia 暂停了占卜';
+        inner.insertBefore(sl, bub); }
       if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
-      if(obj.cards){ await showCards(obj.cards); }
+      if(obj.cards){ lastCards=obj.cards; await showCards(obj.cards); }
       if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); chat.scrollTop=chat.scrollHeight; }
       if(obj.token){ await typeText(obj.token); }
       if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
@@ -961,12 +1116,14 @@ async function send(){
           events.push(obj);
         } else {
           // 普通/解读轮：meta、tool、token 边到边即时呈现，保证跟手。
-          if(obj.meta && obj.meta.length){ meta.textContent='参考了资料：'+obj.meta.join('、'); }
+          if(obj.safety){ safetyKind=obj.safety; const sl=document.createElement('div');
+            sl.className='safety-line'; sl.textContent='🛡 安全闸门已启动 · Olivia 暂停了占卜';
+            inner.insertBefore(sl, bub); }
           if(obj.tool){
             const badge=document.createElement('div'); badge.className='tool-badge';
             badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
           }
-          if(obj.cards){ renderCards(inner, bub, obj.cards); }  // 解读轮：直接渲染，无需延迟
+          if(obj.cards){ lastCards=obj.cards; renderCards(inner, bub, obj.cards); }  // 解读轮：直接渲染，无需延迟
           if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); }
           if(obj.token){ full+=obj.token; bub.textContent=full; }
           if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
@@ -978,9 +1135,16 @@ async function send(){
   if(events.length) await playEvents();
   if(!full) bub.textContent='（没有收到回复，检查设置里的连接。）';
   bub.classList.remove('typewriting');
-  history.push({role:'assistant',content:full});
+  // 安全闸门的那条回复不进 history（不让危机文本流进模型上下文）
+  if(!safetyKind){
+    history.push({role:'assistant',content:full,cards:lastCards||undefined});
+  } else {
+    // 视觉上显示给用户，但 history 里只留一条不带原文的占位。
+    history.push({role:'assistant',content:'（安全闸门回复，详见上方提示）',safety:safetyKind});
+  }
   // m-16: keep only the recent window in-session (server uses the last 20)
   if(history.length > 40) history = history.slice(-40);
+  persistSession();   // 写进会话簿：刷新/关页都能翻回这一页
   streaming=false; $('sendBtn').disabled=false;
 }
 
@@ -1406,6 +1570,25 @@ $('visionSaveBtn').onclick=async()=>{
   $('visionKey').value='';
   await loadKB();
 };
+
+/* 启动时按书脊翻到对应的一页：#/chat/<id> */
+(function bootRoute(){
+  let sid = '';
+  const m = String(window.location.hash || '').match(/^#\/chat\/([A-Za-z0-9_-]+)/);
+  if(m) sid = m[1];
+  const shelf = loadShelf();
+  if(sid){
+    openSession(sid, false);
+  } else {
+    const last = shelf.find(x => x.id === localStorage.getItem(SHELF_ACTIVE_KEY)) || shelf[0];
+    if(last) openSession(last.id, false);
+    else setRoute(sessionId, false);
+  }
+})();
+window.addEventListener('popstate', e => {
+  const m = String(window.location.hash || '').match(/^#\/chat\/([A-Za-z0-9_-]+)/);
+  if(m && m[1] !== sessionId) openSession(m[1], false);
+});
 
 loadConfig();
 loadKB();
