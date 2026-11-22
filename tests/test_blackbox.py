@@ -13,6 +13,7 @@
   · POST /api/chat  历史危机残留    history 里的危机文本不进后续（不 500）
   · GET  /cards/<file>            牌图能取到
   · 目录穿越防护 /cards/../         取不到
+  · 局域网模式（AGENT_HOST=0.0.0.0）未配对 401、错码限流、对码后 Cookie 放行
 
 若端口已被旧进程占用，用 --port 换一个；脚本会用自己的端口起独立服务。
 
@@ -115,14 +116,25 @@ try:
     status, _, body = http_get("/")
     html = body.decode("utf-8", "replace")
     check("GET / 200", status == 200)
+    status_css, _, css_body = http_get("/static/app.css")
+    status_js, _, js_body = http_get("/static/app.js")
+    css = css_body.decode("utf-8", "replace")
+    appjs = js_body.decode("utf-8", "replace")
     check("首页有会话簿按钮", 'id="shelfBtn"' in html)
     check("首页有协议选择器", 'id="protocol"' in html)
-    check("首页含 hash 路由 boot", "#/chat/" in html)
-    check("首页含安全样式", "safety-line" in html)
+    check("静态样式可访问", status_css == 200 and len(css) > 1000)
+    check("静态脚本可访问", status_js == 200 and len(appjs) > 10000)
+    check("首页含 hash 路由 boot", "#/chat/" in appjs)
+    check("首页含安全样式", "safety-line" in css)
     check("首页含 Anthropic/Gemini 预设", "anthropic" in html and "gemini" in html)
+    check("首页有配对码入口", "/api/pair" in appjs and "配对码" in appjs)
     check("首页有分享图按钮", 'id="shareBtn"' in html)
     check("首页有离线标识 chip", 'id="offlineChip"' in html)
-    check("首页有 Canvas 导出逻辑", "toDataURL('image/png')" in html)
+    check("首页有 Canvas 导出逻辑", "toDataURL('image/png')" in appjs)
+    status_m, _, man = http_get("/manifest.webmanifest")
+    check("PWA manifest 可访问", status_m == 200 and b"Olivia" in man)
+    status_sw, _, sw = http_get("/sw.js")
+    check("Service Worker 可访问", status_sw == 200 and b"olivia-shell" in sw)
 
     # ----------------------------------------------------------- config
     status, _, body = http_get("/api/config")
@@ -227,6 +239,92 @@ try:
         check("目录穿越被拒", e.code in (400, 403, 404), "HTTP %d" % e.code)
     except Exception:
         check("目录穿越被拒", True)
+
+    # ------------------------------------------------ 局域网配对（0.0.0.0）
+    LAN_PORT = PORT + 1
+    LAN = "http://127.0.0.1:%d" % LAN_PORT
+    env2 = os.environ.copy()
+    env2["AGENT_PORT"] = str(LAN_PORT)
+    env2["AGENT_HOST"] = "0.0.0.0"
+    env2["OLIVIA_TOKEN"] = "lantest-1234"
+    proc2 = subprocess.Popen(
+        [sys.executable, "server.py"],
+        cwd=AGENT, env=env2,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    def lan_request(path, payload=None, cookie=None):
+        headers = {}
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+        if cookie:
+            headers["Cookie"] = cookie
+        data = (json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                if payload is not None else None)
+        req = urllib.request.Request(
+            LAN + path, data=data, headers=headers,
+            method="POST" if data is not None else "GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.headers, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, e.read()
+
+    try:
+        lan_up = False
+        for _ in range(50):
+            try:
+                st, _, _ = lan_request("/api/config")
+                if st in (200, 401):
+                    lan_up = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        check("局域网服务启动", lan_up)
+        if lan_up:
+            st, _, body = lan_request("/api/config")
+            check("未配对访问 /api/config 被拒 401", st == 401)
+            check("401 响应标记 auth_required", b"auth_required" in body)
+            st, _, body = lan_request("/api/chat", {"message": "你好", "history": []})
+            check("未配对访问 /api/chat 被拒 401", st == 401)
+            st, _, _ = lan_request("/")
+            check("首页本身可打开（用于输入配对码）", st == 200)
+
+            st, _, _ = lan_request("/api/pair", {"code": "123"})
+            check("过短配对码 401", st == 401)
+            st, headers, _ = lan_request("/api/pair", {"code": "lantest-1234"})
+            cookie = None
+            for value in headers.get_all("Set-Cookie") or []:
+                if "olivia_token=" in value:
+                    cookie = value.split(";")[0]
+            check("正确配对码 200 并下发 HttpOnly Cookie",
+                  st == 200 and bool(cookie), repr(headers.get_all("Set-Cookie")))
+            if cookie:
+                st, _, _ = lan_request("/api/knowledge", cookie=cookie)
+                check("配对后 Cookie 放行", st == 200)
+
+            codes = []
+            for _ in range(9):
+                st, _, _ = lan_request("/api/pair", {"code": "wrongcode99"})
+                codes.append(st)
+            check("错码先 401、8 次后 429 限流",
+                  codes[:8] == [401] * 8 and codes[-1] == 429, repr(codes))
+            st, _, _ = lan_request("/api/pair", {"code": "lantest-1234"})
+            check("限流期间正确码也被挡", st == 429)
+
+            st, headers, _ = lan_request("/?token=lantest-1234")
+            if st == 429:
+                st, headers, _ = lan_request("/?token=lantest-1234")
+            check("URL token 也能换到 Cookie",
+                  st == 200 and any("olivia_token=" in v
+                                    for v in (headers.get_all("Set-Cookie") or [])))
+    finally:
+        proc2.terminate()
+        try:
+            proc2.wait(timeout=5)
+        except Exception:
+            proc2.kill()
 
 finally:
     proc.terminate()

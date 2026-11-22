@@ -1,0 +1,82 @@
+name: Bug report / 问题反馈
+description: 报告一个可复现的问题 / Report a reproducible bug
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先搜索已有 issue，避免重复。
+        **请勿粘贴 API key、真实提问、记忆内容或任何个人隐私。**
+
+        Thanks for reporting. Search existing issues first, and never paste API keys,
+        real questions, memory contents or personal data.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么 / What happened
+      description: 描述实际看到的现象，以及它和预期的差别。/ Describe what you saw and how it differs from what you expected.
+      placeholder: 例如：点「抽牌」后页面一直停在加载状态…… / e.g. The page stays on loading after I click Draw...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 按顺序写清楚每一步，便于他人复现。/ List the exact steps in order.
+      placeholder: |
+        1. 以 AGENT_HOST=127.0.0.1 启动服务
+        2. 打开 http://127.0.0.1:8765
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为 / Expected behavior
+      description: 你原本期待发生什么？/ What did you expect to happen?
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统 / OS
+      placeholder: Windows 11 23H2 / macOS 15 / Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python 版本 / Python version
+      description: 终端运行 `python --version`。/ Run `python --version` in a terminal.
+      placeholder: "3.12.4"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: 浏览器 / Browser
+      description: 桌面网页或手机浏览器请填浏览器与版本；安卓 App 请填 App 版本。/ For web clients, give browser and version; for the Android app, give the app version.
+      placeholder: Chrome 131 / Edge 131 / Firefox 133 / Olivia Android 1.0.0
+  - type: dropdown
+    id: mobile
+    attributes:
+      label: 是否手机端 / Mobile client
+      options:
+        - 否，桌面浏览器 / No, desktop browser
+        - 是，安卓 App / Yes, Android app
+        - 是，手机浏览器 / Yes, mobile browser
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图 / Logs or screenshots
+      description: 粘贴终端输出、浏览器控制台的报错，或直接拖入截图。请先删掉密钥与隐私。/ Paste terminal or console errors, or drag in screenshots. Redact secrets and personal content first.
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: 是否已脱敏 / Redaction check
+      options:
+        - label: 我已移除 API key、真实提问、记忆内容和可识别个人身份的信息 / I removed API keys, real questions, memory contents and personally identifying information.
+          required: true

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # 零依赖项目：不安装任何 pip 包，只做字节编译与两套自查。
+      - name: Byte-compile
+        run: python -m compileall -q agent tests
+
+      # 黑盒测试会自己在 18765 端口起一个服务，必须与白盒串行执行，
+      # 不要把这两个步骤改成并行 job。
+      - name: Whitebox tests
+        run: python tests/test_whitebox.py
+
+      - name: Blackbox tests
+        run: python tests/test_blackbox.py

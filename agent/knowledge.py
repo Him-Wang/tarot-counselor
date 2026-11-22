@@ -110,6 +110,15 @@ def list_docs():
 _MEANINGS_CACHE = {}
 
 
+def _append_note(card, bucket, text):
+    """Append a "- xx补充：" line to an existing meaning bucket."""
+    text = text.strip()
+    if not text:
+        return
+    cur = _MEANINGS_CACHE[card].get(bucket, "")
+    _MEANINGS_CACHE[card][bucket] = (cur + " " + text).strip() if cur else text
+
+
 def _load_meanings():
     """Parse knowledge/meanings/*.md into {card_name: {'core','正位','逆位'}}."""
     if _MEANINGS_CACHE:
@@ -150,6 +159,20 @@ def _load_meanings():
                     elif line.startswith("- 逆位："):
                         _MEANINGS_CACHE[current]["逆位"] = line[len("- 逆位："):].strip()
                         bucket = "逆位"
+                    elif line.startswith("- 正位补充："):
+                        _append_note(current, "正位", line[len("- 正位补充："):])
+                        bucket = None
+                    elif line.startswith("- 逆位补充："):
+                        _append_note(current, "逆位", line[len("- 逆位补充："):])
+                        bucket = None
+                    elif line.startswith("- 牌面象征："):
+                        _MEANINGS_CACHE[current].setdefault("象征", []).append(
+                            line[len("- 牌面象征："):].strip())
+                        bucket = None
+                    elif line.startswith("- 宫廷牌视角："):
+                        _MEANINGS_CACHE[current].setdefault("视角", []).append(
+                            line[len("- 宫廷牌视角："):].strip())
+                        bucket = None
                     elif bucket and line and not line.startswith(("#", "-")):
                         # only plain continuation lines extend the bucket;
                         # stray headings/bullets must not be appended
@@ -167,6 +190,12 @@ def get_card_meaning(name, orientation="正位"):
     parts = []
     if core:
         parts.append("核心：" + core)
+    symbols = m.get("象征") or []
+    if symbols:
+        parts.append("牌面：" + "；".join(symbols))
     if body:
         parts.append(orientation + "：" + body)
+    view = m.get("视角") or []
+    if view:
+        parts.append("宫廷牌：" + "；".join(view))
     return " ".join(parts)

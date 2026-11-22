@@ -1,0 +1,20 @@
+{
+  "name": "Olivia · 私人塔罗咨询师",
+  "short_name": "Olivia",
+  "description": "本地优先的 AI 塔罗咨询师：78 张牌、39 个牌阵、危机闸门、长期记忆。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#edf0f6",
+  "theme_color": "#edf0f6",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

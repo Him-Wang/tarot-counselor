@@ -142,6 +142,11 @@ def _openai_events(messages, cfg, tools):
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
+    if cfg.get("max_output_tokens"):
+        try:
+            payload["max_tokens"] = max(1, int(cfg["max_output_tokens"]))
+        except (TypeError, ValueError):
+            pass
     # 本地 Ollama 推理模型默认关 thinking（与 llm.py 一致）
     base = str(cfg.get("base_url", "")).lower()
     if ("127.0.0.1" in base or "localhost" in base) and cfg.get("think") is not True:
@@ -288,7 +293,7 @@ def _anthropic_events(messages, cfg, tools):
     payload = {
         "model": cfg.get("model", ""),
         "messages": msgs,
-        "max_tokens": int(cfg.get("max_tokens") or 4096),
+        "max_tokens": int(cfg.get("max_output_tokens") or cfg.get("max_tokens") or 4096),
         "stream": True,
     }
     if system:
@@ -483,6 +488,12 @@ def _gemini_events(messages, cfg, tools):
     }
     if system:
         payload["systemInstruction"] = {"parts": [{"text": system}]}
+    if cfg.get("max_output_tokens"):
+        try:
+            payload["generationConfig"]["maxOutputTokens"] = max(
+                1, int(cfg["max_output_tokens"]))
+        except (TypeError, ValueError):
+            pass
     gtools = _gemini_tools(tools)
     if gtools:
         payload["tools"] = gtools

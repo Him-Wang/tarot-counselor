@@ -22,6 +22,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 
+import db as _db
 import safety as _safety
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -63,17 +64,10 @@ def _now():
 
 
 def _conn():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _db.connect(DB_PATH, timeout=10)
 
 
-def init_db():
-    conn = _conn()
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.executescript("""
+_SCHEMA_V1 = """
         CREATE TABLE IF NOT EXISTS profile (
             key TEXT PRIMARY KEY,
             value TEXT,
@@ -105,8 +99,25 @@ def init_db():
             question TEXT,
             created_at TEXT
         );
-        """)
-        conn.commit()
+        """
+
+_SCHEMA_V2 = """
+        CREATE TABLE IF NOT EXISTS usage (
+            day TEXT PRIMARY KEY,
+            tokens_in INTEGER DEFAULT 0,
+            tokens_out INTEGER DEFAULT 0,
+            calls INTEGER DEFAULT 0
+        );
+        """
+
+
+def init_db():
+    conn = _conn()
+    try:
+        _db.migrate(conn, [
+            (1, lambda c: c.executescript(_SCHEMA_V1)),
+            (2, lambda c: c.executescript(_SCHEMA_V2)),
+        ])
     finally:
         conn.close()
 
@@ -524,3 +535,108 @@ def stats():
                 "messages": c("messages"), "draws": c("draws")}
     finally:
         conn.close()
+
+
+# ---------- token usage / daily budget ----------
+
+def add_usage(tokens_in=0, tokens_out=0):
+    """Accumulate today's token usage (used by the cost guard)."""
+    init_db()
+    day = datetime.now().strftime("%Y-%m-%d")
+    try:
+        ti, to = max(0, int(tokens_in or 0)), max(0, int(tokens_out or 0))
+    except (TypeError, ValueError):
+        ti, to = 0, 0
+    if not ti and not to:
+        return
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT INTO usage(day,tokens_in,tokens_out,calls) VALUES(?,?,?,1) "
+            "ON CONFLICT(day) DO UPDATE SET "
+            "tokens_in=tokens_in+excluded.tokens_in, "
+            "tokens_out=tokens_out+excluded.tokens_out, calls=calls+1",
+            (day, ti, to))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def usage_today():
+    init_db()
+    day = datetime.now().strftime("%Y-%m-%d")
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT tokens_in,tokens_out,calls FROM usage WHERE day=?", (day,)).fetchone()
+        if not row:
+            return {"day": day, "in": 0, "out": 0, "total": 0, "calls": 0}
+        return {"day": day, "in": row["tokens_in"], "out": row["tokens_out"],
+                "total": (row["tokens_in"] or 0) + (row["tokens_out"] or 0),
+                "calls": row["calls"]}
+    finally:
+        conn.close()
+
+
+def usage_history(days=14):
+    init_db()
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT day,tokens_in,tokens_out,calls FROM usage ORDER BY day DESC LIMIT ?",
+            (max(1, int(days)),)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def import_draw(spread, cards_json, question, created_at=""):
+    """Insert a draw from a backup, preserving its original timestamp."""
+    if not cards_json:
+        return False
+    init_db()
+    conn = _conn()
+    try:
+        conn.execute(
+            "INSERT INTO draws(spread,cards,question,created_at) VALUES(?,?,?,?)",
+            (spread or "未注明", cards_json, (question or "")[:200],
+             created_at or _now()))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def list_messages(limit=5000):
+    """Export conversation turns (oldest first) for the backup bundle."""
+    init_db()
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            "SELECT role,content,sensitive,created_at FROM messages "
+            "ORDER BY id DESC LIMIT ?", (max(1, int(limit)),)).fetchall()
+        return [dict(r) for r in reversed(rows)]
+    finally:
+        conn.close()
+
+
+def import_messages(items):
+    """Append conversation turns from a backup. Returns inserted count."""
+    init_db()
+    conn = _conn()
+    count = 0
+    try:
+        for m in items or []:
+            if not isinstance(m, dict) or not m.get("content"):
+                continue
+            role = m.get("role") if m.get("role") in ("user", "assistant") else "user"
+            conn.execute(
+                "INSERT INTO messages(role,content,sensitive,created_at) VALUES(?,?,?,?)",
+                (role, str(m["content"]), 1 if m.get("sensitive") else 0,
+                 str(m.get("created_at") or _now())))
+            count += 1
+        conn.commit()
+        return count
+    finally:
+        conn.close()
+

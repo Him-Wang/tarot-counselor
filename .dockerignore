@@ -1,0 +1,28 @@
+.git
+.gitignore
+.github
+
+__pycache__
+*.pyc
+*.pyo
+
+# 本机密钥、记忆与运行时数据
+agent/data
+agent/config.json
+agent/__pycache__
+agent/olivia.pid
+
+# 构建产物
+installer/dist
+android/build
+android/keystore
+*.apk
+*.aab
+
+# 数据库
+*.db
+*.db-wal
+*.db-shm
+
+# 文档里的大媒体文件
+docs/media

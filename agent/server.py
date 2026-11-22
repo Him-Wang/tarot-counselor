@@ -36,15 +36,21 @@ import scheduler
 import watchers
 import plugin_kb
 import plugin_vision
+import auth
+import backup
+import secret_store
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-PERSONA_PATH = os.path.join(REPO_DIR, "prompts", "persona.zh.md")
-PROPHECY_PATH = os.path.join(REPO_DIR, "prompts", "prophecy.zh.md")
-TONE_PATH = os.path.join(REPO_DIR, "prompts", "tone.zh.md")
+PERSONA_DIR = os.path.join(REPO_DIR, "prompts")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 EXTRAS_LOG = os.path.join(BASE_DIR, "data", "extras.jsonl")
+VERSION = "1.1.0"
+
+# Filled in main(); loopback keeps auth disabled so local use stays frictionless.
+AUTH_STATE = {"enabled": False, "token": "", "throttle": auth.Throttle()}
 
 PRESETS = {
     "ollama": {
@@ -114,6 +120,12 @@ DEFAULT_CONFIG = {
     "prophecy_enabled": False,
     "two_phase_draw": True,
     "tone_enabled": True,
+    "language": "zh",
+    "daily_token_budget": 0,      # 0 = 不限制；单位 token，按天重置
+    "max_output_tokens": 0,        # 0 = 交给后端默认
+    "max_history_messages": 20,
+    "max_history_chars": 24000,
+    "safety_second_check": False,  # 模糊表达时才额外调用一次分类
 }
 
 
@@ -125,47 +137,79 @@ def load_config():
                 cfg.update(json.load(f))
         except Exception:
             pass
+    # API key 密文 -> 明文（只在内存里）；旧配置的明文 key 继续可用，
+    # 下一次 save_config 会自动改写成密文。
+    enc = str(cfg.pop("api_key_enc", "") or "")
+    if not cfg.get("api_key") and enc:
+        cfg["api_key"] = secret_store.unprotect(enc)
     return cfg
 
 
 def save_config(cfg):
+    disk = dict(cfg)
+    key = str(disk.pop("api_key", "") or "")
+    if key:
+        disk["api_key_enc"] = secret_store.protect(key)
+    else:
+        disk.pop("api_key_enc", None)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+        json.dump(disk, f, ensure_ascii=False, indent=2)
+    secret_store.harden(CONFIG_PATH)
 
 
-def load_persona():
+def _lang(cfg=None):
+    lang = str((cfg or load_config()).get("language") or "zh").lower()
+    return "en" if lang.startswith("en") else "zh"
+
+
+def _prompt_path(name, lang):
+    """prompts/<name>.<lang>.md，英文缺失时回退中文。"""
+    path = os.path.join(PERSONA_DIR, "%s.%s.md" % (name, lang))
+    if os.path.exists(path):
+        return path
+    return os.path.join(PERSONA_DIR, "%s.zh.md" % name)
+
+
+def load_persona(cfg=None):
     try:
-        with open(PERSONA_PATH, "r", encoding="utf-8") as f:
+        with open(_prompt_path("persona", _lang(cfg)), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return "你是一名沉稳、专业的塔罗咨询师 Olivia（奥莉薇娅）。"
 
 
-def load_prophecy():
+def load_prophecy(cfg=None):
     """预言模式覆盖层（仅供娱乐），仅在开启时加载。"""
     try:
-        with open(PROPHECY_PATH, "r", encoding="utf-8") as f:
+        with open(_prompt_path("prophecy", _lang(cfg)), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
 
 
-def load_tone():
+def load_tone(cfg=None):
     """语气系统：让 Olivia 的措辞像一个真实女性塔罗师，并自然体现 NVC。"""
     try:
-        with open(TONE_PATH, "r", encoding="utf-8") as f:
+        with open(_prompt_path("tone", _lang(cfg)), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
 
 
-def now_context():
+def now_context(cfg=None):
     """把「现在几点」写进 system。
 
     语气层要求建议落到具体时间（「今晚睡前」「明天上午」），但没有这个锚点，
     模型只能猜今天是哪天。这里每轮现算，不用缓存。
     """
     now = datetime.datetime.now()
+    if _lang(cfg) == "en":
+        return (
+            "\n\n[Current time] It is %s %02d:%02d, %d-%02d-%02d. "
+            "Use this clock for relative times such as tonight, tomorrow or this week; "
+            "never guess a year from training data."
+            % (now.strftime("%A"), now.hour, now.minute, now.year, now.month, now.day)
+        )
     week = "一二三四五六日"[now.weekday()]
     return (
         "\n\n【当前时间】现在是 %d年%d月%d日（星期%s）%02d:%02d。"
@@ -414,15 +458,50 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # quiet
 
-    def _send_json(self, obj, status=200):
+    # ---------- auth helpers ----------
+    def _cookies(self):
+        out = {}
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                out[k.strip()] = v.strip()
+        return out
+
+    def _query(self):
+        from urllib.parse import parse_qs
+        if "?" not in self.path:
+            return {}
+        return {k: v[0] for k, v in parse_qs(self.path.split("?", 1)[1]).items()}
+
+    def _authorized(self):
+        if not AUTH_STATE["enabled"]:
+            return True
+        supplied = (self.headers.get("X-Olivia-Token")
+                    or self._cookies().get(auth.COOKIE_NAME)
+                    or self._query().get("token", ""))
+        return auth.verify(AUTH_STATE["token"], supplied)
+
+    def _client_ip(self):
+        return (self.client_address or ("", 0))[0]
+
+    def _deny(self):
+        self._send_json({
+            "error": "unauthorized",
+            "auth_required": True,
+            "hint": "输入电脑端控制台显示的配对码",
+        }, 401)
+
+    def _send_json(self, obj, status=200, headers=None):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_static(self, root_dir, rel, ctype):
+    def _send_static(self, root_dir, rel, ctype, cache="public, max-age=86400"):
         """安全地发送 root_dir 下的静态文件（禁止路径穿越）。"""
         rel = rel.split("?")[0]
         target = os.path.abspath(os.path.join(root_dir, rel))
@@ -439,9 +518,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("Cache-Control", cache)
         self.end_headers()
         self.wfile.write(body)
+
 
     def _body(self):
         try:
@@ -458,6 +538,33 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = self.path.split("?")[0]
+
+        # ---- PWA / 拆分后的静态资源（不需要鉴权）----
+        if p == "/manifest.webmanifest":
+            self._send_static(STATIC_DIR, "manifest.webmanifest",
+                              "application/manifest+json", "no-cache")
+            return
+        if p == "/sw.js":
+            self._send_static(STATIC_DIR, "sw.js",
+                              "application/javascript; charset=utf-8", "no-cache")
+            return
+        if p == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+        if p.startswith("/static/"):
+            ctypes = {
+                ".css": "text/css; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+                ".svg": "image/svg+xml",
+                ".png": "image/png",
+                ".json": "application/json; charset=utf-8",
+            }
+            ext = os.path.splitext(p)[1].lower()
+            self._send_static(STATIC_DIR, p[len("/static/"):],
+                              ctypes.get(ext, "application/octet-stream"))
+            return
+
         if p in ("/", "/index.html"):
             try:
                 with open(INDEX_HTML, "rb") as f:
@@ -467,15 +574,46 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            if (AUTH_STATE["enabled"]
+                    and auth.verify(AUTH_STATE["token"], self._query().get("token", ""))):
+                self.send_header(
+                    "Set-Cookie",
+                    "%s=%s; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly"
+                    % (auth.COOKIE_NAME, AUTH_STATE["token"]))
             self.end_headers()
             self.wfile.write(body)
-        elif p == "/api/config":
+            return
+
+        # ---- 局域网模式：/api/* 需要配对码 ----
+        if p.startswith("/api/") and not self._authorized():
+            self._deny()
+            return
+
+        if p == "/api/config":
+            cfg = load_config()
             self._send_json({
-                "config": mask(load_config()),
+                "config": mask(cfg),
                 "presets": PRESETS,
                 "docs": knowledge.list_docs(),
                 "spreads": spreads_mod.list_spreads(),
+                "usage": memory.usage_today(),
+                "version": VERSION,
+                "auth": {
+                    "required": AUTH_STATE["enabled"],
+                    "paired": self._authorized(),
+                },
             })
+        elif p == "/api/backup":
+            payload = backup.build(BASE_DIR)
+            body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition",
+                             'attachment; filename="olivia-backup.json"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif p == "/api/knowledge":
             self._send_json({"docs": knowledge.list_docs()})
         elif p.startswith("/cards/"):
@@ -516,11 +654,36 @@ class Handler(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         body = self._body()
 
+        # ---- 配对：唯一不需要既有 Cookie 的 POST ----
+        if p == "/api/pair":
+            if not AUTH_STATE["enabled"]:
+                self._send_json({"ok": True, "auth_required": False})
+                return
+            ip = self._client_ip()
+            if AUTH_STATE["throttle"].blocked(ip):
+                self._send_json({"ok": False, "error": "尝试次数过多，请稍后再试"}, 429)
+                return
+            if auth.verify(AUTH_STATE["token"], body.get("code", "")):
+                AUTH_STATE["throttle"].clear(ip)
+                self._send_json({"ok": True}, headers={
+                    "Set-Cookie": "%s=%s; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly"
+                    % (auth.COOKIE_NAME, AUTH_STATE["token"])})
+            else:
+                AUTH_STATE["throttle"].fail(ip)
+                self._send_json({"ok": False, "error": "配对码不正确"}, 401)
+            return
+
+        if p.startswith("/api/") and not self._authorized():
+            self._deny()
+            return
+
         if p == "/api/config":
             cfg = load_config()
             for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature", "timeout",
                       "think", "tools_enabled", "memory_enabled", "prophecy_enabled",
-                      "two_phase_draw", "tone_enabled"):
+                      "two_phase_draw", "tone_enabled", "language", "daily_token_budget",
+                      "max_output_tokens", "max_history_messages", "max_history_chars",
+                      "safety_second_check"):
                 if k in body:
                     cfg[k] = body[k]
             # M1: never overwrite a saved key with a masked display string.
@@ -532,7 +695,15 @@ class Handler(BaseHTTPRequestHandler):
             ):
                 cfg["api_key"] = load_config().get("api_key", "")
             save_config(cfg)
-            self._send_json({"ok": True, "config": mask(cfg)})
+            self._send_json({"ok": True, "config": mask(cfg),
+                             "usage": memory.usage_today()})
+
+        elif p == "/api/backup":
+            try:
+                counts = backup.restore(body, BASE_DIR)
+                self._send_json({"ok": True, "counts": counts})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 400)
 
         elif p == "/api/test":
             # Issue #1: the "test connection" button must probe the values
@@ -566,6 +737,17 @@ class Handler(BaseHTTPRequestHandler):
             # 只客观整理本地已抽的牌。抽牌本身永远可用，与这个标志无关。
             _offline = offline.is_offline(cfg)
 
+            # ---- 每日 token 预算 ----
+            # 超预算不报错、不装死：自动切到离线整理，本地抽牌/读牌仍然可用。
+            try:
+                _budget = int(cfg.get("daily_token_budget") or 0)
+            except (TypeError, ValueError):
+                _budget = 0
+            _used_today = memory.usage_today()["total"]
+            _budget_hit = bool(_budget and _used_today >= _budget)
+            if _budget_hit:
+                _offline = True
+
             # ---- 安全闸门（服务端权威）----
             # 危机判定绝不交给模型"自觉调用 crisis_check"：那是个工具，
             # 模型可能不调、也可能抽完牌才调。这里在 /api/chat 的最入口、
@@ -573,6 +755,24 @@ class Handler(BaseHTTPRequestHandler):
             # 命中即切断：牌不发、图不识别、话不进模型、记忆不落库。
             import safety as _safety
             _crisis = _safety.detect(message)
+            # 可选的语言学兜底：正则没命中、但出现「不想存在 / better off without me」
+            # 这类模糊表达时，才额外让模型做一次 YES/NO 分类（默认关闭）。
+            if (not _crisis and not _offline and cfg.get("safety_second_check")
+                    and _safety.needs_second_check(message)):
+                try:
+                    probe = [
+                        {"role": "system", "content": _safety.SECOND_CHECK_PROMPT},
+                        {"role": "user", "content": str(message)[:800]},
+                    ]
+                    buf = []
+                    for ev in provider.stream_chat_events(probe, cfg, tools=None):
+                        if ev["type"] == "token":
+                            buf.append(ev["text"])
+                    if _safety.parse_second_check("".join(buf)):
+                        _crisis = "unknown"
+                except Exception as _se:
+                    print("[safety] second check skipped: %s" % _se)
+
             if _crisis:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -671,16 +871,16 @@ class Handler(BaseHTTPRequestHandler):
 
             # retrieve relevant knowledge for this turn
             context, used = knowledge.retrieve(message)
-            system = load_persona() + now_context()
+            system = load_persona(cfg) + now_context(cfg)
             # 语气系统：Olivia 的"声音"——真实女性塔罗师的措辞 + 自然 NVC。
             # 放在人格之后、其余上下文之前，确保它稳定地盖住表达方式。
             if cfg.get("tone_enabled", True):
-                tone = load_tone()
+                tone = load_tone(cfg)
                 if tone:
                     system += "\n\n---\n" + tone
             # 预言模式（仅供娱乐）：手动开启时才追加覆盖层，安全边界不放开
             if cfg.get("prophecy_enabled", False):
-                prophecy = load_prophecy()
+                prophecy = load_prophecy(cfg)
                 if prophecy:
                     system += "\n\n---\n" + prophecy
             if context:
@@ -725,14 +925,33 @@ class Handler(BaseHTTPRequestHandler):
                 system += "\n\n---\n" + tools.TOOL_GUIDE
             # 两阶段流程下，解读轮的历史里若含上一轮的抽牌说明，不影响解牌；
             # 关键约束已在 system 里显式给出。
-            msgs = [{"role": "system", "content": system}]
-            for h in history[-20:]:
+            # 上下文裁剪：按消息条数和字符数双重上限，从最旧的开始丢，
+            # 避免长会话把窗口撑爆或把预算烧在重复历史上。
+            try:
+                max_msgs = max(2, int(cfg.get("max_history_messages") or 20))
+            except (TypeError, ValueError):
+                max_msgs = 20
+            try:
+                max_chars = max(2000, int(cfg.get("max_history_chars") or 24000))
+            except (TypeError, ValueError):
+                max_chars = 24000
+            kept = []
+            used_chars = len(system)
+            for h in reversed(history[-max_msgs:]):
+                if not isinstance(h, dict):
+                    continue
+                text = str(h.get("content", ""))
+                if used_chars + len(text) > max_chars:
+                    break
+                role = h.get("role", "user")
                 # m11: only real conversation roles are allowed in; a client
                 # must not be able to inject a system message via history.
-                role = h.get("role", "user")
                 if role not in ("user", "assistant"):
                     role = "user"
-                msgs.append({"role": role, "content": str(h.get("content", ""))})
+                kept.append({"role": role, "content": text})
+                used_chars += len(text)
+            kept.reverse()
+            msgs = [{"role": "system", "content": system}] + kept
             msgs.append({"role": "user", "content": message})
 
             self.send_response(200)
@@ -747,6 +966,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
 
                 emit({"meta": used})
+                if _budget:
+                    emit({"budget": {"limit": _budget, "used": _used_today,
+                                     "exceeded": _budget_hit}})
                 full = []
                 usage_totals = {"in": 0, "out": 0, "total": 0}
                 # M2: keep the structured draw_cards result for this turn, so
@@ -880,6 +1102,10 @@ class Handler(BaseHTTPRequestHandler):
                     # ---- end agentic loop ----
                 if usage_totals["total"]:
                     emit({"usage": usage_totals})
+                    try:
+                        memory.add_usage(usage_totals["in"], usage_totals["out"])
+                    except Exception:
+                        pass
                 emit({"done": True})
                 # persist this turn (rule-based extraction, ~0 ms) after stream
                 if cfg.get("memory_enabled", True) and full and preset_reply is None:
@@ -1087,6 +1313,9 @@ def main():
     port = int(os.environ.get("AGENT_PORT", "8765"))
     # 默认只监听本机。要让手机（安卓 App）连上，设 AGENT_HOST=0.0.0.0 显式开放到局域网。
     host = os.environ.get("AGENT_HOST", "127.0.0.1")
+    AUTH_STATE["enabled"] = auth.enabled(host)
+    if AUTH_STATE["enabled"]:
+        AUTH_STATE["token"] = auth.load_or_create(BASE_DIR)
     srv = ThreadingHTTPServer((host, port), Handler)
     scheduler.start(load_config)
     # PID 文件：供安装包的 uninstall 精确停止本服务（不误杀其它 python server.py）
@@ -1097,9 +1326,15 @@ def main():
     except Exception:
         pid_path = None
     shown = "127.0.0.1" if host in ("", "0.0.0.0") else host
-    print("Olivia agent running at http://%s:%d" % (shown, port))
-    if host == "0.0.0.0":
-        print("已对局域网开放：手机用本机 IP 访问，同网段的人也能打开，用完请改回默认。")
+    print("Olivia agent v%s running at http://%s:%d" % (VERSION, shown, port))
+    if host == "0.0.0.0" and AUTH_STATE["enabled"]:
+        code = auth.pretty(AUTH_STATE["token"])
+        print("已对局域网开放：手机访问 http://<本机IP>:%d" % port)
+        print("配对码：%s（只需在手机/浏览器里输入一次）" % code)
+        print("也可直接打开 http://<本机IP>:%d/?token=%s"
+              % (port, AUTH_STATE["token"]))
+    elif host == "0.0.0.0":
+        print("已对局域网开放：同网段的人也能打开，用完请改回默认。")
     print("Press Ctrl+C to stop.")
     try:
         srv.serve_forever()

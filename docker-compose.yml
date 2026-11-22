@@ -1,0 +1,12 @@
+services:
+  olivia:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./agent/data:/app/agent/data
+    environment:
+      AGENT_HOST: "0.0.0.0"
+      AGENT_PORT: "8765"
+      OLIVIA_TOKEN: ${OLIVIA_TOKEN:-}
+    restart: unless-stopped

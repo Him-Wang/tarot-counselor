@@ -83,6 +83,52 @@ _SEXUAL_HARM_PATTERNS = [
 ]
 _SEXUAL_HARM_RE = [re.compile(p) for p in _SEXUAL_HARM_PATTERNS]
 
+# ---------- English patterns ----------
+# 英文人格包已可用，闸门不能只认中文。英文不做逐词否定解析，
+# 而是看命中词前 24 个字符里是否出现否定词，宁可再生一次误报也不漏。
+_EN_SELF_HARM_PATTERNS = [
+    r"\b(?:kill|killing)\s+myself\b",
+    r"\bsuicid(?:e|al)\b",
+    r"\bend\s+(?:my|this)\s+life\b",
+    r"\b(?:want|wanna|going)\s+to\s+die\b",
+    r"\bdon'?t\s+want\s+to\s+(?:live|be\s+alive)\b",
+    r"\b(?:cut|hurt|harm)\s+myself\b",
+    r"\bno\s+reason\s+to\s+live\b",
+    r"\bbetter\s+off\s+dead\b",
+    r"\bcan'?t\s+go\s+on\s+living\b",
+]
+_EN_SELF_HARM_RE = [re.compile(p, re.I) for p in _EN_SELF_HARM_PATTERNS]
+
+_EN_NEG_BEFORE = re.compile(
+    r"(?:not|never|don'?t|doesn'?t|didn'?t|wouldn'?t|won'?t|isn'?t|ain'?t|"
+    r"no\s+longer|no\s+intention\s+of)\s+(?:\w+\s+){0,3}$", re.I)
+
+_EN_DREAM_RE = re.compile(
+    r"\b(?:dream(?:t|ed|ing)?|in\s+my\s+dream|movie|film|novel|fiction|"
+    r"video\s+game|roleplay)\b", re.I)
+
+_EN_THREAT_RE = [
+    re.compile(p, re.I) for p in [
+        r"\b(?:he|she|they|my\s+(?:husband|wife|boyfriend|girlfriend|partner|"
+        r"father|mother|dad|mom|roommate|boss|colleague))\s+"
+        r"(?:hit|hits|beat|beats|punched|slapped|choked|strangled|kicked)\s+me\b",
+        r"\b(?:i\s+was|i'?ve\s+been)\s+(?:hit|beaten|abused|assaulted|raped|"
+        r"sexually\s+assaulted|molested|stalked)\b",
+        r"\bdomestic\s+(?:violence|abuse)\b",
+        r"\b(?:he|she|they)\s+threatened\s+to\s+(?:kill|hurt|harm)\s+me\b",
+        r"\b(?:someone|somebody)\s+is\s+(?:following|stalking)\s+me\b",
+    ]
+]
+
+_EN_HARM_OTHERS_RE = [
+    re.compile(p, re.I) for p in [
+        r"\bi\s+(?:want|wanna|plan|intend|am\s+going)\s+to\s+"
+        r"(?:kill|murder|shoot|stab|strangle)\s+(?:him|her|them|someone|somebody)\b",
+        r"\bhow\s+to\s+(?:kill|murder|poison)\s+(?:someone|somebody|a\s+person)\b",
+        r"\bi\s+(?:want|plan)\s+to\s+hurt\s+(?:him|her|them)\b",
+    ]
+]
+
 
 def _any(patterns, text):
     return any(p.search(text) for p in patterns)
@@ -95,6 +141,12 @@ def _self_harm_hit(text):
             if _NEGATION_BEFORE.search(prefix):
                 continue
             return True
+    for p in _EN_SELF_HARM_RE:
+        for m in p.finditer(text):
+            prefix = text[max(0, m.start() - 24):m.start()]
+            if _EN_NEG_BEFORE.search(prefix):
+                continue
+            return True
     return False
 
 
@@ -103,23 +155,46 @@ def detect(text):
 
     类别：sexual-assault / sexual-harm / threat / harm-others / self
     """
-    t = re.sub(r"\s+", "", str(text or ""))
+    t = re.sub(r"\s+", " ", str(text or "")).strip()
     if not t:
         return None
-    if _DREAM_RE.search(t):
+    if _DREAM_RE.search(t) or _EN_DREAM_RE.search(t):
         return None
     if _any(_SEXUAL_ASSAULT_RE, t):
         return "sexual-assault"
     if _any(_SEXUAL_HARM_RE, t):
         return "sexual-harm"
     # 先判"我要伤害别人"，避免"我想杀了那个伤害我的人"被威胁句式吃掉
-    if _any(_HARM_OTHERS_RE, t):
+    if _any(_HARM_OTHERS_RE, t) or any(p.search(t) for p in _EN_HARM_OTHERS_RE):
         return "harm-others"
-    if _any(_THREAT_RE, t):
+    if _any(_THREAT_RE, t) or any(p.search(t) for p in _EN_THREAT_RE):
         return "threat"
     if _self_harm_hit(t):
         return "self"
     return None
+
+
+# ---------- 可选的语言学兜底 ----------
+# 正则抓不到隐喻/间接表达。开启 safety_second_check 后，命中这些模糊词
+# 才额外让模型做一次很小的 YES/NO 判定，避免每轮都多花一次调用。
+_AMBIGUOUS = re.compile(
+    r"(不想存在|消失掉|结束这一切|一了百了|想解脱|不想醒来|"
+    r"better\s+off\s+without\s+me|end\s+it\s+all|no\s+way\s+out|"
+    r"tired\s+of\s+living|don'?t\s+want\s+to\s+be\s+here)", re.I)
+
+SECOND_CHECK_PROMPT = (
+    "你是安全分类器。判断下面这句话是否表达了自伤、轻生、被暴力伤害或伤害他人的"
+    "现实意图（不是电影/小说/梦境/比喻）。只输出一个词：YES 或 NO。\n\n"
+)
+
+
+def needs_second_check(text):
+    return bool(_AMBIGUOUS.search(str(text or "")))
+
+
+def parse_second_check(reply):
+    return bool(re.search(r"\bYES\b", str(reply or ""), re.I))
+
 
 
 def is_crisis(text):

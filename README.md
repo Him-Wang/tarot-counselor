@@ -6,7 +6,18 @@
 
 牌是本地抽的，记忆留在本机，只有解读那一步会连模型。
 
-[上手](#三十秒) · [一次占卜的全程](#一次占卜的全程) · [她凭什么可信](#她凭什么可信) · [她的手](#她的手) · [配置](#配置) · [目录](#目录)
+[![CI](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml/badge.svg)](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml)
+[![version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
+[![python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![license](https://img.shields.io/badge/license-PolyForm%20NC%20%2B%20CC%20BY--NC--SA-green.svg)](LICENSE)
+
+[上手](#三十秒) · [一次占卜的全程](#一次占卜的全程) · [她凭什么可信](#她凭什么可信) · [她的手](#她的手) · [MCP](#mcp) · [配置](#配置) · [目录](#目录)
+
+![Olivia 演示：抽牌、提问、解读](docs/media/demo.gif)
+
+<sub>[首页](docs/media/home.png) · [牌阵](docs/media/spreads.png) · [牌面](docs/media/cards.png) · [解读](docs/media/reading.png) · [设置](docs/media/settings.png) · [手机端](docs/media/mobile.png)</sub>
+
+<sub>[English](README.en.md)</sub>
 
 </div>
 
@@ -40,6 +51,14 @@
 cd agent && python server.py      # 只用 Python 3 标准库
 ```
 
+### Docker：一条命令
+
+```bash
+docker compose up -d              # 打开 http://127.0.0.1:8765
+```
+
+镜像基于 `python:3.12-slim`，仍然只用标准库；数据挂在 `./agent/data`，删容器不等于让她失忆。
+
 ### 手机：同一个 Release 里的 `Olivia-1.0.0.apk`
 
 薄客户端，连电脑上那台 Olivia（详见 [手机端](#手机端)）。
@@ -72,7 +91,7 @@ cd agent && python server.py      # 只用 Python 3 标准库
 
 **6. 看牌、存牌、听牌。** 双击任意牌出大图（逆位自动转正给你看清）；点「存这次解读」把牌面加她的话渲成一张 1080 宽的 PNG（浏览器下载，手机直接进相册 `Pictures/Olivia`）；点「朗读」让她念出来（浏览器走 Web Speech，安卓走系统 TTS）。
 
-**7. 每次对话收尾都留个账。** 消息下面显示「本轮 tokens：入 x / 出 y」，知道这一问花了多少。
+**7. 每次对话收尾都留个账。** 消息下面显示「本轮 tokens：入 x / 出 y」，知道这一问花了多少。设置里还能给每天设一个预算，接近上限会提示，超了就只做离线整理，不会悄悄烧钱；历史消息也会按条数自动裁剪，长对话不至于越聊越贵。
 
 **8. 明天不聊也行。** 关怀面板里开「每日一牌」，每天到点她本地抽一张写进收件箱——**不调模型，没 key 也照常送达**。
 
@@ -80,7 +99,7 @@ cd agent && python server.py      # 只用 Python 3 标准库
 
 ## 她凭什么可信
 
-**牌不是她现编的。** 78 张牌面是公有领域扫描（`agent/cards/`，来源见 `SOURCE.md`），牌义按《塔罗智慧》《21世纪的塔罗书》《其实你已经很塔罗了》三书要义用中文重写，不是照搬。**抽牌不放回**，每次给出复现种子，同种子同牌阵能抽回同一副牌——你随时可以自证她没有临场挑牌。
+**牌不是她现编的。** 78 张牌面是公有领域扫描（`agent/cards/`，来源见 `SOURCE.md`）。牌义只做韦特（RWS）体系：核心含义、正逆位之外，每张牌还补了牌面象征与实务提示，宫廷牌另有「人物 / 自我的某一面」两种视角；写法是读图后的原创重写，参考书目列在 `knowledge/meanings/` 各文件头部。**抽牌不放回**，每次给出复现种子，同种子同牌阵能抽回同一副牌——你随时可以自证她没有临场挑牌。
 
 **时间是真的。** 每轮都会把当前日期与时刻注入她的上下文，所以「今晚睡前」「明早七点」这类建议有真实时间可依，不会拿训练数据里的年份瞎猜。
 
@@ -119,6 +138,8 @@ cd agent && python server.py      # 只用 Python 3 标准库
 
 另外两本：`agent/plugin_kb.py` 是你的**个人笔记库**（`kb.db`，可归档、检索、导出 Markdown），会话簿是**浏览器本地存的历次对话**（可命名、回访，深链 `#/chat/<id>`；危机对话只存占位，不存原文）。
 
+想搬家或换机器，设置里能**整体导出 / 导入**一个 JSON：画像、线索、抽牌、对话、笔记、定时任务、盯事都在里面，**不含 key**。数据库用 WAL 并带 schema 版本号，升级时自动迁移，不会因为你换版本就把旧记忆读废。
+
 ---
 
 ## 配置
@@ -136,7 +157,9 @@ cd agent && python server.py      # 只用 Python 3 标准库
 }
 ```
 
-环境变量：`AGENT_PORT`（默认 `8765`）、`AGENT_HOST`（默认 `127.0.0.1`；要让手机连就说 `AGENT_HOST=0.0.0.0`，同网段都能打开她，用完记得改回来）。
+环境变量：`AGENT_PORT`（默认 `8765`）、`AGENT_HOST`（默认 `127.0.0.1`）。
+
+**局域网要配对码。** 一旦 `AGENT_HOST` 不是本机回环地址，启动时会在控制台打印一个 8 位配对码（也存在 `agent/data/access_token`，用 `OLIVIA_TOKEN` 可指定自己的）。别的设备第一次打开要先输这串码，之后靠 HttpOnly Cookie 记住；脚本调用可以带 `X-Olivia-Token` 头。同一个 IP 十分钟内错 8 次会被暂时挡住。只在自己电脑上用（默认 `127.0.0.1`）时没有这一步。
 
 数据全在 `agent/data/`：`memory.db`（画像 / 线索 / 对话 / 抽牌）、`kb.db`（笔记）、`scheduler.db`（定时任务与收件箱）、`watchers.db`（盯事与基线）、`extras.jsonl`（补牌记录）。删掉这些文件等于让她失忆，目录一起删就是彻底清除。
 
@@ -150,6 +173,7 @@ cd agent && python server.py      # 只用 Python 3 标准库
 ├── skills/tarot-counselor/SKILL.md  # 按需加载的技能格式
 ├── knowledge/                   # 专业资料，入口 INDEX.md
 │   ├── meanings/                # 大阿卡纳 + 四花色 + 解牌方法 + 牌间关系
+│   ├── readings/                # 方法层：读牌流程、单张深读、逆位、宫廷牌
 │   ├── spreads/牌阵速查.md
 │   ├── skills/共情式倾听.md
 │   └── ethics/危机与转介.md
@@ -176,6 +200,7 @@ cd agent && python server.py      # 只用 Python 3 标准库
 │   ├── Setup.cs  Launcher.cs    # csc.exe 直接编译，无需 VS / dotnet SDK
 │   └── dist/                    # 产物（gitignore）
 ├── tests/                       # 白盒 + 黑盒自查
+├── README.en.md                 # 英文版
 └── README.md
 ```
 
@@ -186,11 +211,11 @@ cd agent && python server.py      # 只用 Python 3 标准库
 只依赖标准库，**不碰真实模型 API**，没 key 也能跑：
 
 ```bash
-python tests/test_whitebox.py     # 69 项：源码结构、纯函数、协议转换、牌阵完整性
-python tests/test_blackbox.py     # 41 项：起独立服务发真实 HTTP 请求
+python tests/test_whitebox.py     # 120 项：源码结构、纯函数、协议转换、牌阵完整性、配对/加密/迁移/MCP
+python tests/test_blackbox.py     # 57 项：起独立服务发真实 HTTP 请求（含局域网配对）
 ```
 
-黑盒会验证：危机请求不发牌、不调工具、先给求助资源；抽牌不放回；没有 key 时解读轮标 offline 且明说不是 AI 解读；历史里的危机残留不二次报警；深链路由与分享图按钮在首页；牌图可访问、目录穿越被拒。它用 `AGENT_PORT` 起独立端口，不会打扰你正在跑的实例。
+黑盒会验证：危机请求不发牌、不调工具、先给求助资源；抽牌不放回；没有 key 时解读轮标 offline 且明说不是 AI 解读；历史里的危机残留不二次报警；深链路由与分享图按钮在首页；牌图可访问、目录穿越被拒；`AGENT_HOST=0.0.0.0` 时未配对 401、错码限流、对码后 Cookie 放行。它用 `AGENT_PORT` 起独立端口，不会打扰你正在跑的实例。
 
 ---
 
@@ -218,6 +243,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File android\build.ps1
 
 - **当提示词**：`prompts/persona.zh.md`（可加 `tone.zh.md`）塞进 ChatGPT 自定义指令 / Claude Project / 自建 Agent 的 system prompt
 - **当技能**：整个 `skills/tarot-counselor/` 放进技能目录（Claude Code `~/.claude/skills/`，DSH `~/.dsh/skills/`），平时是普通助手，求占或想说话时才加载
+
+---
+
+## MCP
+
+`agent/mcp_server.py` 是一个零依赖的 MCP stdio server，把「抽牌、查牌、检索、列牌阵」四件事交给别的客户端用，不联网、不碰你的记忆与 key。
+
+```json
+{
+  "mcpServers": {
+    "olivia-tarot": {
+      "command": "python",
+      "args": ["C:/path/to/tarot-counselor/agent/mcp_server.py"]
+    }
+  }
+}
+```
+
+| 工具 | 返回 |
+|---|---|
+| `draw_cards` | 按牌阵本地抽牌，含牌位、正逆位、传统牌意、布局坐标与可复现种子 |
+| `lookup_card` | 单张韦特牌意（正位 / 逆位 / 两者） |
+| `search_knowledge` | 解牌方法、牌间关系、共情式倾听、伦理与转介 |
+| `list_spreads` | 39 个牌阵的名称与位置说明 |
+
+自检：`python agent/mcp_server.py --selftest`。
 
 ---
 
