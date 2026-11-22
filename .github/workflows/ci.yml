@@ -16,8 +16,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python: ["3.9", "3.12"]
+        # ubuntu-latest 已不再提供 Python 3.9，老版本固定到 22.04 / windows-2022。
+        include:
+          - os: ubuntu-22.04
+            python: "3.9"
+          - os: windows-2022
+            python: "3.9"
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.12"
 
     steps:
       - name: Checkout
