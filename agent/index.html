@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Olivia · 私人塔罗咨询师</title>
 <style>
   /* ===== Olivia · 轻拟态（Light Neumorphism）设计系统 ===== */
@@ -38,6 +38,10 @@
     display:flex;justify-content:center;
   }
   .app{width:100%;max-width:840px;height:100%;display:flex;flex-direction:column;padding:20px;gap:14px}
+  /* 窄屏留出状态栏 / 灵动岛的高度，标题不被顶到状态栏里 */
+  @media (max-width:640px){
+    .app{padding-top:max(32px, env(safe-area-inset-top, 0px));padding-bottom:max(20px, env(safe-area-inset-bottom, 0px))}
+  }
   /* 顶栏独立成层并铺不透明底色：长消息（选阵列表）滚动时不会透到顶栏文字上 */
   header{display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap;flex-shrink:0;
     position:relative;z-index:20;background:var(--bg);border-radius:var(--radius);box-shadow:var(--sh)}
