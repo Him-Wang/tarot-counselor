@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 safety.py — Olivia 的独立安全闸门（stdlib only）。
 

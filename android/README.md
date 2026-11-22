@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia · 安卓客户端
 
 一个**不重新实现任何逻辑**的 WebView 薄客户端：Olivia 仍然跑在你的电脑上，手机只是个窗口。

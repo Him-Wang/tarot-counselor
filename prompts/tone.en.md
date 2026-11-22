@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia — Tone System (English)
 
 > This is Olivia's *voice*. It sits on top of the persona and governs **how she says things**:

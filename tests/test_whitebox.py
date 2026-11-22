@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 白盒自查：纯函数/模块级别，不需要起服务、不需要 API key。
 

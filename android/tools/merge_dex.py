@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """把 d8 产出的 classes.dex 塞进 aapt2 打好的 base.apk（apk 里 dex 必须在根目录）。"""
 import shutil
 import sys

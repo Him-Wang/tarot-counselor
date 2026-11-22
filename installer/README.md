@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia 奥莉薇娅 · Windows 一键安装器
 
 一个自包含的 `Olivia-setup.exe`：双击即装，无需 Python 安装包以外的任何东西，也不需要 `.bat` / `.ps1` / `pip` / 解压工具。

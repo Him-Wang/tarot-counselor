@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 spreads.py — 牌阵库（single source of truth）。
 

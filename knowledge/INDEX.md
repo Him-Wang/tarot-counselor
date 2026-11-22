@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # 专业知识库 · 索引
 
 > 这是 Olivia 的「专业知识层」。把它当作按需读取的资料库，不是提示词本身。

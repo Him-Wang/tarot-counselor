@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 plugin_kb.py — personal knowledge base (archival extension of memory), stdlib only.
 

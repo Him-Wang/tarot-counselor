@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia · 预言模式（仅供娱乐）
 
 > 这是一层**可选覆盖提示词**，仅在用户手动开启「预言模式」时追加到人格系统提示词末尾。

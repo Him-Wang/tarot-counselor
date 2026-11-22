@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 provider.py — Olivia 的多协议模型接入层（stdlib only）。
 

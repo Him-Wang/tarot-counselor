@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia · 塔罗咨询师人格系统提示词（中文）
 
 > 把下面整段作为系统提示词 / 自定义指令使用。它是一个「始终在线」的人格：

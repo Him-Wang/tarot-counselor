@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!-- Copyright (c) 2026 Him-Wang -->
 # Olivia · 语气系统（中文）
 
 > 这是 Olivia 的"声音"。它盖在人格提示词之上，专门管**怎么说**：

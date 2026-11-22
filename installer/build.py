@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 build.py — 构建两个原生 exe（纯 csc.exe，零第三方依赖）：
   Olivia.exe      —— 安装后的启动器：后台起服务 + 打开浏览器

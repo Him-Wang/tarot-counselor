@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Him-Wang
 """
 黑盒自查：起一个真实的 HTTP 服务，用 stdlib 发请求，只看接口行为。
 

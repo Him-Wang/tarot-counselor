@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 Him-Wang
 // Olivia-setup.exe —— 单文件一键安装器（解压即装、建快捷方式、启动服务）。
 // 纯 .NET Framework 4，用 csc.exe 编译；不依赖任何 .bat / .ps1 / pip / 7z。
 using System;

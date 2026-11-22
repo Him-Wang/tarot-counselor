@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Copyright (c) 2026 Him-Wang
 // Olivia.exe —— 安装后放在程序目录，双击即可后台启动服务并打开浏览器。
 // 纯 .NET Framework 4，无控制台窗口，不依赖任何 .bat / .ps1。
 using System;
