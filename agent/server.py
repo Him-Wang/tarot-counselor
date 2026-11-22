@@ -21,6 +21,7 @@ Routes:
 import json
 import os
 import re
+import sys
 import time
 import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -1310,6 +1311,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Windows 控制台/重定向到文件时默认不是 UTF-8，启动横幅里的中文会直接抛
+    # UnicodeEncodeError，导致局域网模式还没监听就退出。
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     port = int(os.environ.get("AGENT_PORT", "8765"))
     # 默认只监听本机。要让手机（安卓 App）连上，设 AGENT_HOST=0.0.0.0 显式开放到局域网。
     host = os.environ.get("AGENT_HOST", "127.0.0.1")
