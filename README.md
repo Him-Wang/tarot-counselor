@@ -229,10 +229,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File android\build.ps1
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE)。**这不是开源许可，是「随便玩，但别拿去赚钱」**。
+默认是「**随便玩，但别拿去赚钱**」，分两条许可：
 
-可以：下载、装在自己的电脑或手机上用、读源码、改着玩、给朋友看、非商业地分享（带上 `LICENSE` 与 `Required Notice` 那行署名）。
+| 内容 | 许可 | 一句话 |
+|---|---|---|
+| `agent/` `android/` `installer/` `tests/` `prompts/` `skills/` `knowledge/skills/` `knowledge/ethics/` | [PolyForm Noncommercial 1.0.0](LICENSE) | 代码与人格：可自用、可改着玩，不能商用 |
+| `knowledge/meanings/` `knowledge/spreads/` `knowledge/INDEX.md`（牌义、牌阵速查） | [CC BY-NC-SA 4.0](knowledge/LICENSE) | 牌义正文：署名、非商业、改编须同样授权 |
+| `agent/cards/` 78 张牌面 | 公有领域（1909 RWS） | 不需要授权，出处见 `agent/cards/SOURCE.md` |
+
+可以：下载、装在自己电脑或手机上用、读源码、改着玩、给朋友看、非商业地分享（带上 `LICENSE` 与 `Required Notice` 那行署名）。
 
 不可以：拿去商用——卖、作为付费产品或服务的一部分、在公司里当生产工具、换个名字包装成自己的产品再发布。
 
-牌义是原创中文重写（同样受这份许可约束）；78 张牌面是 1909 年 RWS 的公有领域扫描，不受限制；「Olivia / 奥莉薇娅」的人格设定与名字归作者所有。
+**想商用？** 可以单独买商业授权，见 [`COMMERCIAL.md`](COMMERCIAL.md)。个人、学习、研究、非营利用途不用联系，直接用。
+
+「Olivia / 奥莉薇娅」的名字与人格设定归作者所有，换品牌对外提供需在合同中单独约定。

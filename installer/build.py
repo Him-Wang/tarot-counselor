@@ -69,7 +69,7 @@ def make_payload():
                         continue
                     zf.write(full, arc)
                     n += 1
-        for name in ("README.md", "LICENSE"):
+        for name in ("README.md", "LICENSE", "COMMERCIAL.md"):
             p = os.path.join(REPO, name)
             if os.path.exists(p):
                 zf.write(p, name)
