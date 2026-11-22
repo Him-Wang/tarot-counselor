@@ -31,6 +31,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 AGENT = os.path.join(os.path.dirname(HERE), "agent")
 sys.path.insert(0, AGENT)
 
+# Windows 控制台默认不是 UTF-8，中文用例名会直接抛 UnicodeEncodeError。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PASS = 0
 FAIL = 0
 

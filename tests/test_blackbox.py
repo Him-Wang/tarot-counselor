@@ -33,6 +33,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 AGENT = os.path.join(ROOT, "agent")
 
+# Windows 控制台默认不是 UTF-8，中文用例名会直接抛 UnicodeEncodeError。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PORT = 18765
 if "--port" in sys.argv:
     PORT = int(sys.argv[sys.argv.index("--port") + 1])
