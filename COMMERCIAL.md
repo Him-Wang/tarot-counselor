@@ -23,7 +23,7 @@
 
 ## 怎么谈
 
-- 邮箱：`TODO: 填你的商业联系邮箱`
+- 邮箱：**1941904855@qq.com**（注明用途与规模）
 - 或者 [开一个 Issue](https://github.com/Him-Wang/tarot-counselor/issues) 说明用途、规模、是否需要闭源。
 
 价格与条款按使用方式（内部工具 / 对外产品 / SaaS）分别约定。
