@@ -28,6 +28,10 @@
 - 自查补齐：新增 `auth` / `secret_store` / `db` / `backup` / `mcp_server` 用例与局域网配对黑盒，共 177 项（120 白盒 + 57 黑盒）。
 - 英文 README：`README.en.md`，与中文版结构对应。
 
+### Changed
+
+- README 与英文版推倒重写：先讲边界与流程，再讲工具与实现。
+
 ### Security
 
 - 局域网访问增加配对校验，降低同网段未授权访问的风险。
