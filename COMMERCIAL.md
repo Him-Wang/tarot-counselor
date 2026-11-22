@@ -2,8 +2,8 @@
 
 这个项目默认按两条许可发布：
 
-- `agent/` `android/` `installer/` `tests/` `prompts/` `skills/` `knowledge/skills/` `knowledge/ethics/` → **PolyForm Noncommercial 1.0.0**
-- `knowledge/meanings/` `knowledge/spreads/` `knowledge/INDEX.md`（牌义与牌阵）→ **CC BY-NC-SA 4.0**
+- `agent/` `android/` `installer/` `tests/`（程序代码）→ **PolyForm Noncommercial 1.0.0**
+- `prompts/` `skills/` `knowledge/`（人格、语气、牌义、牌阵、解牌方法）→ **CC BY-NC-SA 4.0**
 
 两者都允许下载、自用、读源码、改着玩、非商业地分享；**都禁止商业使用**。
 

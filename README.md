@@ -233,8 +233,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File android\build.ps1
 
 | 内容 | 许可 | 一句话 |
 |---|---|---|
-| `agent/` `android/` `installer/` `tests/` `prompts/` `skills/` `knowledge/skills/` `knowledge/ethics/` | [PolyForm Noncommercial 1.0.0](LICENSE) | 代码与人格：可自用、可改着玩，不能商用 |
-| `knowledge/meanings/` `knowledge/spreads/` `knowledge/INDEX.md`（牌义、牌阵速查） | [CC BY-NC-SA 4.0](knowledge/LICENSE) | 牌义正文：署名、非商业、改编须同样授权 |
+| `agent/` `android/` `installer/` `tests/`（程序代码） | [PolyForm Noncommercial 1.0.0](LICENSE) | 代码：可自用、可改着玩，不能商用 |
+| `prompts/` `skills/` `knowledge/`（人格、语气、牌义、牌阵、解牌方法） | [CC BY-NC-SA 4.0](LICENSE-CONTENT) | 文字与人格：署名、非商业，改编须同样授权 |
 | `agent/cards/` 78 张牌面 | 公有领域（1909 RWS） | 不需要授权，出处见 `agent/cards/SOURCE.md` |
 
 可以：下载、装在自己电脑或手机上用、读源码、改着玩、给朋友看、非商业地分享（带上 `LICENSE` 与 `Required Notice` 那行署名）。
