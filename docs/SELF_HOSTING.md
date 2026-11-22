@@ -63,7 +63,7 @@ docker compose logs olivia | Select-String -Pattern "token|配对"
 
 ## 方式三：Windows 安装器
 
-从 [Releases](../../releases/tag/v1.0.0) 下载 `Olivia-setup.exe`（约 11 MB）：
+从 [最新 Release](https://github.com/Him-Wang/tarot-counselor/releases/latest) 下载 `Olivia-setup.exe`（约 11 MB）：
 
 1. 双击安装器。若提示没有 Python 3，按提示安装 Python 并勾选 **Add Python to PATH**，然后重新运行安装器。
 2. 选择安装目录（默认 `%LOCALAPPDATA%\Olivia`）与是否开机自启。

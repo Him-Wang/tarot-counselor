@@ -57,7 +57,7 @@ body:
     attributes:
       label: 浏览器 / Browser
       description: 桌面网页或手机浏览器请填浏览器与版本；安卓 App 请填 App 版本。/ For web clients, give browser and version; for the Android app, give the app version.
-      placeholder: Chrome 131 / Edge 131 / Firefox 133 / Olivia Android 1.0.0
+      placeholder: Chrome 131 / Edge 131 / Firefox 133 / Olivia Android 1.2.0
   - type: dropdown
     id: mobile
     attributes:

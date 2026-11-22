@@ -2,11 +2,15 @@
 
 本项目的重要变更记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-排序说明：`Unreleased` 收拢尚未发布的新能力；`1.1.0` 是当前 `main` 已具备、尚未打 tag 的基线；`1.0.0` 是已发布版本。
+排序说明：`Unreleased` 收拢尚未发布的新能力；`1.2.0` 是当前 `main` 的版本，对应最新 Release；`1.1.0` 与 `1.0.0` 是历史版本。
 
 ## [Unreleased]
 
-尚未发布的能力（部分已在开发分支实现）。发布时移入对应版本。
+暂无。
+
+## [1.2.0] - 2026-11-23
+
+首个带完整发布产物的版本：Windows 安装器与安卓 APK 随 Release 一起提供。
 
 ### Added
 
@@ -22,6 +26,7 @@
 - 解牌方法：新增 `knowledge/readings/`（读牌流程、单张深读、逆位读法、宫廷牌读法）；`牌间关系.md` 增加花色进程一节。
 - Docker 与 CI：Dockerfile、docker-compose、GitHub Actions 四矩阵自查。
 - 自查补齐：新增 `auth` / `secret_store` / `db` / `backup` / `mcp_server` 用例与局域网配对黑盒，共 177 项（120 白盒 + 57 黑盒）。
+- 英文 README：`README.en.md`，与中文版结构对应。
 
 ### Security
 
@@ -31,10 +36,11 @@
 ### Fixed
 
 - Windows 非中文控制台在局域网模式下打印配对码时因编码报错退出；自查脚本同样固定 UTF-8 输出。
+- CI 的 Python 3.9 组合固定到 `ubuntu-22.04` / `windows-2022`，避免新版镜像不再提供 3.9。
 
 ## [1.1.0] - 2026-11-22
 
-当前 `main` 的版本号为 1.1.0，尚未打 tag；以下能力已经可用。
+以下能力在 1.1.0 基线中已经可用。
 
 ### Added
 

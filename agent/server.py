@@ -48,7 +48,7 @@ PERSONA_DIR = os.path.join(REPO_DIR, "prompts")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 EXTRAS_LOG = os.path.join(BASE_DIR, "data", "extras.jsonl")
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # Filled in main(); loopback keeps auth disabled so local use stays frictionless.
 AUTH_STATE = {"enabled": False, "token": "", "throttle": auth.Throttle()}

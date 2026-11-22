@@ -26,7 +26,7 @@ import spreads as spreads_mod  # noqa: E402
 import tools              # noqa: E402
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "olivia-tarot", "version": "1.1.0"}
+SERVER_INFO = {"name": "olivia-tarot", "version": "1.2.0"}
 
 TOOLS = [
     {

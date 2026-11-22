@@ -7,7 +7,7 @@ A tarot reader who lives on your computer. She is a woman of few words: she does
 Cards are drawn locally, memories stay on this machine, and only the reading step talks to a model.
 
 [![CI](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml/badge.svg)](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-PolyForm%20NC%20%2B%20CC%20BY--NC--SA-green.svg)](LICENSE)
 
@@ -37,7 +37,7 @@ What she deliberately does not do: predict specific events, give medical / legal
 
 ### Windows: double-click install
 
-Grab **`Olivia-setup.exe`** (about 11 MB) from [Releases](../../releases/tag/v1.0.0):
+Grab **`Olivia-setup.exe`** (about 11 MB) from the [latest Release](https://github.com/Him-Wang/tarot-counselor/releases/latest):
 
 1. Choose an install folder (default `%LOCALAPPDATA%\Olivia`) and whether to start on boot
 2. It creates a shortcut, starts the service in the background, opens <http://127.0.0.1:8765>
@@ -59,7 +59,7 @@ docker compose up -d              # open http://127.0.0.1:8765
 
 The image is based on `python:3.12-slim` and still uses only the standard library. Data is mounted at `./agent/data`, so deleting the container does not erase her memory.
 
-### Mobile: `Olivia-1.0.0.apk` from the same Release
+### Mobile: `Olivia-release.apk` from the same Release
 
 A thin client that connects to the Olivia running on your computer (see [Mobile](#mobile)).
 

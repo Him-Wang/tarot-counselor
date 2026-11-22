@@ -63,7 +63,7 @@ if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed" }
 & $aapt2 link -o (Join-Path $build "base.apk") -I $jar `
     --manifest (Join-Path $here "AndroidManifest.xml") `
     --min-sdk-version 24 --target-sdk-version 34 `
-    --version-code 1 --version-name 1.0.0 `
+    --version-code 2 --version-name 1.2.0 `
     (Join-Path $build "res.zip")
 if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 
