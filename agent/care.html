@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dsh-design" content="web">
+<title>Olivia · 关怀</title>
+<link rel="stylesheet" href="/static/design-tokens.css">
+<link rel="stylesheet" href="/static/design-components.css">
+<style>
+/* ============================================================
+   Olivia · 关怀
+   危机时不做占卜。这一页只放能立刻用上的东西。
+   ============================================================ */
+html{scroll-behavior:smooth}
+body{min-height:100vh}
+
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:26px;
+  height:58px;padding:0 24px;
+  border-bottom:1px solid var(--line);
+  background:rgba(10,9,16,.88);backdrop-filter:blur(16px);
+}
+.nav{display:flex;align-items:center;gap:2px;margin-left:6px}
+.nav a{
+  position:relative;display:inline-flex;align-items:center;min-height:34px;
+  padding:0 10px;border-radius:5px;
+  font-size:var(--fs-13);color:var(--muted);letter-spacing:.04em;
+  transition:color .16s var(--ease),background .16s var(--ease);
+}
+.nav a:hover{color:var(--text-2);background:rgba(255,255,255,.03)}
+.nav a[aria-current="page"]{color:var(--text)}
+.nav a[aria-current="page"]::after{
+  content:"";position:absolute;left:10px;right:10px;bottom:3px;height:1px;
+  background:var(--gold);opacity:.8;
+}
+.topbar .spacer{flex:1}
+.status-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  height:30px;padding:0 10px;
+  border:1px solid var(--line);border-radius:5px;
+  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);
+  white-space:nowrap;
+}
+.status-chip .dot{width:5px;height:5px;border-radius:50%;background:var(--gold);display:inline-block}
+.icon-btn{
+  width:34px;height:34px;flex:none;border-radius:50%;
+  display:grid;place-items:center;color:var(--muted);
+  transition:color .16s var(--ease),background .16s var(--ease);
+}
+.icon-btn:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.icon-btn svg{width:16px;height:16px}
+
+.care{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:64px 32px 90px}
+.kicker{display:flex;align-items:center;gap:8px}
+
+.hero{padding-bottom:44px}
+.hero h1{
+  margin-top:16px;
+  font-family:var(--font-serif);font-size:var(--fs-34);font-weight:400;
+  line-height:1.35;letter-spacing:.02em;color:var(--text);max-width:16em;
+}
+.hero .sub{margin-top:16px;max-width:46ch;font-size:var(--fs-14);color:var(--muted);line-height:1.9}
+.hero .quiet{
+  margin-top:20px;font-size:var(--fs-12);color:var(--muted-2);
+  display:flex;align-items:center;gap:8px;
+}
+.hero .quiet .diamond{opacity:.7}
+
+/* 急救号码 */
+.urgent{
+  position:relative;
+  border-top:1px solid rgba(201,168,106,.4);
+  border-bottom:1px solid var(--line);
+  padding:28px 0 8px;
+}
+.urgent h2{
+  font-family:var(--font-serif);font-size:var(--fs-18);font-weight:400;
+  color:var(--text);letter-spacing:.04em;
+}
+.urgent .lead{margin-top:8px;font-size:var(--fs-13);color:var(--muted);line-height:1.8}
+.urgent ul{margin-top:18px}
+.urgent li{
+  display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:baseline;
+  padding:16px 0;border-top:1px solid var(--line);
+}
+.urgent li:first-child{border-top:none}
+.urgent .num{
+  font-family:var(--font-serif);font-size:var(--fs-34);font-weight:400;
+  color:var(--gold);letter-spacing:.02em;line-height:1.1;
+  font-variant-numeric:tabular-nums;
+}
+.urgent .num small{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);display:block;margin-top:6px;letter-spacing:.02em}
+.urgent .what{font-size:var(--fs-14);color:var(--text-2);line-height:1.75}
+.urgent .what b{color:var(--text);font-weight:400;font-family:var(--font-serif);font-size:var(--fs-14)}
+.urgent .what span{display:block;margin-top:3px;font-size:var(--fs-12);color:var(--muted)}
+.urgent .foot{margin:8px 0 22px;font-size:var(--fs-12);color:var(--muted);line-height:1.8}
+
+/* 三件小事 */
+.steps{padding:44px 0 8px}
+.steps h2{
+  font-family:var(--font-serif);font-size:var(--fs-21);font-weight:400;
+  color:var(--text);letter-spacing:.02em;
+}
+.steps .lead{margin-top:10px;font-size:var(--fs-14);color:var(--muted);line-height:1.8;max-width:48ch}
+.steps ol{margin-top:26px;counter-reset:step}
+.steps li{
+  position:relative;counter-increment:step;
+  padding:20px 0 20px 54px;border-top:1px solid var(--line);
+}
+.steps li::before{
+  content:counter(step,decimal-leading-zero);
+  position:absolute;left:0;top:22px;
+  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--gold);letter-spacing:.08em;
+}
+.steps h3{
+  font-family:var(--font-serif);font-size:var(--fs-18);font-weight:400;
+  color:var(--text);letter-spacing:.02em;
+}
+.steps p{margin-top:7px;font-size:var(--fs-14);color:var(--muted);line-height:1.85;max-width:52ch}
+.steps p b{color:var(--text-2);font-weight:400}
+
+/* Olivia 的话 */
+.words{
+  margin:40px 0 0;padding:26px 28px;
+  border-left:1px solid rgba(201,168,106,.5);
+  background:linear-gradient(90deg,rgba(201,168,106,.05),transparent 70%);
+}
+.words blockquote{
+  font-family:var(--font-serif);font-size:var(--fs-21);font-weight:400;
+  line-height:1.7;color:var(--text);letter-spacing:.01em;
+}
+.words .from{margin-top:12px;font-size:var(--fs-12);color:var(--muted)}
+.words p{margin-top:14px;max-width:48ch;font-size:var(--fs-13);color:var(--muted);line-height:1.85}
+
+/* 两栏说明 */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:52px;padding:48px 0 0}
+.block h2{
+  font-family:var(--font-serif);font-size:var(--fs-18);font-weight:400;
+  color:var(--text);letter-spacing:.03em;
+  padding-bottom:12px;border-bottom:1px solid var(--line);
+}
+.block ul{margin-top:6px}
+.block li{
+  position:relative;padding:12px 0 12px 16px;
+  font-size:var(--fs-13);color:var(--muted);line-height:1.8;
+  border-bottom:1px solid var(--line);
+}
+.block li::before{
+  content:"";position:absolute;left:0;top:19px;
+  width:3px;height:3px;border-radius:50%;background:var(--gold-dim);
+}
+.block li b{color:var(--text-2);font-weight:400}
+
+/* 结尾 */
+.coda{
+  margin-top:54px;padding-top:30px;border-top:1px solid var(--line);
+  display:flex;align-items:flex-end;justify-content:space-between;gap:30px;
+}
+.coda .line{
+  font-family:var(--font-serif);font-size:var(--fs-21);font-weight:400;
+  line-height:1.7;color:var(--text-2);letter-spacing:.02em;max-width:28ch;
+}
+.coda .acts{display:flex;gap:8px;flex-wrap:wrap}
+.coda .fine{margin-top:18px;font-size:var(--fs-12);color:var(--muted-2);line-height:1.8}
+
+.page-foot{
+  position:relative;z-index:1;
+  max-width:880px;margin:0 auto;padding:18px 32px 40px;
+  border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  font-size:var(--fs-12);color:var(--muted-2);
+}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+@media (max-width:900px){
+  .topbar{padding:0 18px;gap:14px}
+  .nav{display:none}
+  .status-chip{display:none}
+  .care{padding:44px 22px 64px}
+  .page-foot{padding:16px 22px 34px}
+}
+@media (max-width:640px){
+  .brand-sub{display:none}
+  .brand{gap:9px}
+  .care{padding:34px 18px 56px}
+  .hero h1{font-size:var(--fs-34)}
+  .hero .sub{font-size:var(--fs-14)}
+  .urgent li{grid-template-columns:1fr;gap:8px;padding:18px 0}
+  .urgent .num{font-size:var(--fs-34)}
+  .steps h2{font-size:var(--fs-21)}
+  .two{grid-template-columns:1fr;gap:34px}
+  .coda{flex-direction:column;align-items:flex-start}
+  .page-foot{flex-direction:column;align-items:flex-start;gap:6px;padding:16px 18px 30px}
+}
+</style>
+</head>
+<body>
+<div class="astral"></div>
+
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Olivia 首页">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.6C12.9 8.1 15.9 11.1 21.4 12C15.9 12.9 12.9 15.9 12 21.4C11.1 15.9 8.1 12.9 2.6 12C8.1 11.1 11.1 8.1 12 2.6Z" fill="currentColor"/></svg>
+    </span>
+    <span>
+      <span class="brand-name">Olivia</span>
+      <span class="brand-sub">奥莉薇娅 · 不替你决定的塔罗师</span>
+    </span>
+  </a>
+
+  <nav class="nav" aria-label="主导航">
+    <a href="/">解读</a>
+    <a href="/cards">牌义</a>
+    <a href="/care" aria-current="page">关怀</a>
+  </nav>
+
+  <span class="spacer"></span>
+
+  <span class="status-chip"><span class="dot"></span>危机时 · 会自动停牌</span>
+  <a class="icon-btn" href="/" aria-label="回到对话">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <path d="M15 5l-7 7 7 7"/>
+    </svg>
+  </a>
+  <a class="btn btn--gold" href="/">新对话</a>
+</header>
+
+<main class="care">
+  <section class="hero">
+    <p class="kicker"><span class="diamond"></span>关怀 · CARE</p>
+    <h1>如果你现在不太好，<br>先不抽牌。</h1>
+    <p class="sub">这里不是占卜。下面是一些能立刻用上的东西，你不需要先解释什么，也不需要先证明自己真的很难受。</p>
+    <p class="quiet"><span class="diamond"></span>这个页面不记录访问，也不会出现在会话簿里。</p>
+  </section>
+
+  <section class="urgent" aria-label="紧急联系方式">
+    <h2>现在有人身危险吗？</h2>
+    <p class="lead">如果有，先打电话。牌可以等，安全不能等。</p>
+    <ul>
+      <li>
+        <div class="num">110<small>报警</small></div>
+        <div class="what"><b>有人正在伤害你、威胁你</b><span>或者你担心自己会伤害别人。说不清地址也可以打，接线员会问。</span></div>
+      </li>
+      <li>
+        <div class="num">120<small>急救</small></div>
+        <div class="what"><b>已经受伤、服药过量、失去意识</b><span>不要等“确认严重”再打。把药盒或包装带上，如果方便的话。</span></div>
+      </li>
+      <li>
+        <div class="num">12356<small>心理援助</small></div>
+        <div class="what"><b>全国心理援助热线 · 24 小时</b><span>想死、撑不住、不知道还能找谁的时候。可以先不说话，让接线员陪你待一会儿。</span></div>
+      </li>
+    </ul>
+    <p class="foot">不确定该打哪个，就先打 110；接线员会帮你转到对的地方。受暴也可以联系 <b>12338</b> 妇联，法律问题打 <b>12348</b>。</p>
+  </section>
+
+  <section class="steps">
+    <h2>先做这三件小事</h2>
+    <p class="lead">不用一次做完。能做到哪一步，就先做哪一步。</p>
+    <ol>
+      <li>
+        <h3>离开现场</h3>
+        <p>去一个有人的、能锁门的地方，或者下楼、进便利店。<b>带上手机</b>，不用带别的。</p>
+      </li>
+      <li>
+        <h3>找一个人</h3>
+        <p>给信得过的人发一句：<b>「我现在需要你陪我。」</b>不用解释全部，也不用先道歉。</p>
+      </li>
+      <li>
+        <h3>拨一个号码</h3>
+        <p>不知道打给谁，就打 <b>12356</b>；受暴打 <b>12338</b>；法律问题打 <b>12348</b>；紧急情况打 <b>110 / 120</b>。</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="words">
+    <blockquote>「这不是拒绝你——是我更在意你能不能好好地坐在这里。」</blockquote>
+    <p class="from">Olivia 的危机回应 · 来自 agent/safety.py</p>
+    <p>当你说出伤害自己、被暴力对待，或想伤害别人的话，Olivia 会停下占卜，直接给你这些资源。她不会解牌，不会调用模型，也不会把这次对话写进记忆。</p>
+  </section>
+
+  <section class="two">
+    <div class="block">
+      <h2>Olivia 会怎么做</h2>
+      <ul>
+        <li><b>不抽牌</b>，也不调用模型编一段安慰。</li>
+        <li><b>不写记忆，不进会话簿</b>；这次对话不会留下牌局。</li>
+        <li><b>只给资源</b>，并把话说明白：这不是占卜能处理的事。</li>
+        <li>判断在<b>服务端</b>完成，浏览器端看不到触发词，也不能跳过。</li>
+        <li>等你确认安全，她再陪你看牌。</li>
+      </ul>
+    </div>
+    <div class="block">
+      <h2>给身边的人</h2>
+      <ul>
+        <li>先问一句：<b>「你现在安全吗？」</b></li>
+        <li>不急着分析原因，也不替对方做决定。</li>
+        <li>陪着打电话、去医院，比说“会好的”更有用。</li>
+        <li>如果对方说要伤害自己，<b>不要承诺替 TA 保密</b>。</li>
+        <li>你也需要支持。照顾的人，也可以打 12356。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="coda">
+    <div>
+      <p class="line">等你安全了，<br>我们再坐下来，慢慢看牌。</p>
+      <p class="fine">Olivia 不做诊断，也不替代专业帮助。牌只能陪你把事情看清楚一点。</p>
+    </div>
+    <div class="acts">
+      <a class="btn btn--quiet" href="/?care=1">主动关怀设置</a>
+      <a class="btn btn--quiet" href="/cards">看看牌义</a>
+      <a class="btn btn--gold" href="/">我暂时安全，回到 Olivia</a>
+    </div>
+  </section>
+</main>
+
+<footer class="page-foot">
+  <span><span class="mono">127.0.0.1:8765</span> · 本地优先</span>
+  <span>危机原文不入库 · 牌不开口，人开口</span>
+</footer>
+<script>document.querySelector('.page-foot .mono')?.replaceChildren(location.host);</script>
+</body>
+</html>

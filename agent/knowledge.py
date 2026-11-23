@@ -199,3 +199,13 @@ def get_card_meaning(name, orientation="正位"):
     if view:
         parts.append("宫廷牌：" + "；".join(view))
     return " ".join(parts)
+
+def get_card_entry(name):
+    """Structured meaning for one card, for the 牌义 page."""
+    m = _load_meanings().get(name) or {}
+    return {
+        "core": (m.get("core") or "").strip(),
+        "up": (m.get("正位") or "").strip(),
+        "rev": (m.get("逆位") or "").strip(),
+        "symbols": [x.strip() for x in (m.get("象征") or []) if x and x.strip()][:4],
+    }

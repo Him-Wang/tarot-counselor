@@ -1,0 +1,115 @@
+/* ============================================================
+   Olivia · 共用组件
+   按钮、标签、牌框、头像、提示。页面只写自己的布局。
+   ============================================================ */
+
+/* ---------- 品牌标记 ---------- */
+.mark{
+  width:30px;height:30px;flex:none;border-radius:50%;
+  border:1px solid rgba(201,168,106,.5);
+  display:grid;place-items:center;
+  color:var(--gold-bright);
+  background:radial-gradient(circle at 50% 38%, rgba(201,168,106,.16), transparent 68%);
+}
+.mark svg{width:16px;height:16px;display:block}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand > span:last-child{flex:none;min-width:0}
+.brand-name{
+  display:block;padding-right:4px;
+  font-family:var(--font-serif);font-size:22px;font-weight:400;
+  letter-spacing:.08em;line-height:1.1;color:var(--text);
+}
+.brand-sub{display:block;font-size:var(--fs-12);color:var(--muted);letter-spacing:.1em;line-height:1.4}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:34px;padding:0 12px;
+  border:1px solid var(--line-2);border-radius:var(--radius-sm);
+  background:transparent;color:var(--text-2);
+  font-size:var(--fs-13);letter-spacing:.02em;white-space:nowrap;
+  transition:color .16s var(--ease),border-color .16s var(--ease),background .16s var(--ease);
+}
+.btn:hover{color:var(--text);border-color:rgba(201,168,106,.45)}
+.btn:active{transform:translateY(1px)}
+.btn .icon{width:14px;height:14px}
+
+.btn--gold{
+  background:var(--gold);border-color:var(--gold);color:#171208;font-weight:500;
+}
+.btn--gold:hover{background:var(--gold-bright);border-color:var(--gold-bright);color:#171208}
+
+.btn--quiet{border-color:transparent;color:var(--muted)}
+.btn--quiet:hover{border-color:var(--line);color:var(--text-2)}
+
+.btn--sm{min-height:28px;padding:0 9px;font-size:var(--fs-12);gap:5px}
+.btn--sm .icon{width:12px;height:12px}
+
+/* ---------- 工具 chip（等宽，表示这是机器侧的东西） ---------- */
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  height:28px;padding:0 9px;
+  border:1px solid var(--line);border-radius:5px;
+  font-family:var(--font-mono);font-size:var(--fs-12);
+  color:var(--muted);white-space:nowrap;line-height:1;
+  transition:color .16s var(--ease),border-color .16s var(--ease);
+}
+.chip:hover{color:var(--text-2);border-color:var(--line-2)}
+.chip .icon{width:11px;height:11px}
+.chip--solid{color:var(--gold);border-color:rgba(201,168,106,.32);background:rgba(201,168,106,.05)}
+
+/* ---------- 正逆位 / 小标签 ---------- */
+.tag{
+  display:inline-flex;align-items:center;height:20px;padding:0 6px;
+  border:1px solid var(--line);border-radius:3px;
+  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);
+  line-height:1;
+}
+.tag--gold{color:var(--gold);border-color:rgba(201,168,106,.3)}
+
+/* ---------- 塔罗牌框 ---------- */
+.tarot{
+  position:relative;width:100%;aspect-ratio:420/711;
+  border-radius:3px;overflow:hidden;background:var(--panel-3);
+  box-shadow:var(--shadow-card);
+  transition:transform .3s var(--ease),box-shadow .3s var(--ease);
+}
+.tarot img{width:100%;height:100%;object-fit:cover;display:block}
+.tarot--rev img{transform:rotate(180deg) scale(1.004)}
+.tarot::after{
+  content:"";position:absolute;inset:0;border-radius:3px;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10), inset 0 -30px 40px -30px rgba(0,0,0,.6);
+}
+
+/* ---------- 头像 / 说话人 ---------- */
+.avatar{
+  width:24px;height:24px;flex:none;border-radius:50%;
+  display:grid;place-items:center;color:var(--gold);
+  border:1px solid rgba(201,168,106,.35);background:rgba(201,168,106,.06);
+}
+.avatar svg{width:14px;height:14px}
+.avatar--you{color:var(--muted);border-color:var(--line-2);background:rgba(255,255,255,.02)}
+.who{display:flex;align-items:center;gap:8px;font-size:var(--fs-12);letter-spacing:.1em;color:var(--muted)}
+.who b{font-weight:500;color:var(--text-2);letter-spacing:.06em}
+.who time{font-family:var(--font-mono);font-size:var(--fs-12);letter-spacing:0;color:var(--muted-2)}
+
+/* ---------- 提示条 ---------- */
+.toast{
+  position:fixed;left:50%;bottom:32px;transform:translate(-50%,10px);
+  z-index:80;padding:10px 16px;border-radius:var(--radius-sm);
+  background:#1D1928;border:1px solid rgba(201,168,106,.35);
+  color:var(--text);font-size:var(--fs-13);letter-spacing:.03em;
+  box-shadow:var(--shadow-pop);opacity:0;pointer-events:none;
+  transition:opacity .2s var(--ease),transform .2s var(--ease);
+}
+.toast.is-on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- 进度条 ---------- */
+.bar{width:52px;height:3px;border-radius:3px;background:#241F30;overflow:hidden;display:inline-block}
+.bar i{display:block;height:100%;background:var(--gold);border-radius:3px}
+
+/* ---------- 菱形装饰 ---------- */
+.diamond{
+  width:5px;height:5px;flex:none;transform:rotate(45deg);
+  border:1px solid var(--gold-dim);display:inline-block;
+}

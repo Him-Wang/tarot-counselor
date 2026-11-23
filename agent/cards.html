@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dsh-design" content="web">
+<title>Olivia · 牌义</title>
+<link rel="stylesheet" href="/static/design-tokens.css">
+<link rel="stylesheet" href="/static/design-components.css">
+<style>
+/* ============================================================
+   Olivia · 牌义
+   78 张牌的本地索引。大阿卡纳逐张写，小阿卡纳按花色 × 数字读。
+   ============================================================ */
+html{scroll-behavior:smooth}
+body{min-height:100vh}
+
+/* ---------- 顶栏 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:26px;
+  height:58px;padding:0 24px;
+  border-bottom:1px solid var(--line);
+  background:rgba(10,9,16,.88);backdrop-filter:blur(16px);
+}
+.nav{display:flex;align-items:center;gap:2px;margin-left:6px}
+.nav a{
+  position:relative;display:inline-flex;align-items:center;min-height:34px;
+  padding:0 10px;border-radius:5px;
+  font-size:var(--fs-13);color:var(--muted);letter-spacing:.04em;
+  transition:color .16s var(--ease),background .16s var(--ease);
+}
+.nav a:hover{color:var(--text-2);background:rgba(255,255,255,.03)}
+.nav a[aria-current="page"]{color:var(--text)}
+.nav a[aria-current="page"]::after{
+  content:"";position:absolute;left:10px;right:10px;bottom:3px;height:1px;
+  background:var(--gold);opacity:.8;
+}
+.topbar .spacer{flex:1}
+.status-chip{
+  display:inline-flex;align-items:center;gap:7px;
+  height:30px;padding:0 10px;
+  border:1px solid var(--line);border-radius:5px;
+  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);
+  white-space:nowrap;
+}
+.status-chip .dot{width:5px;height:5px;border-radius:50%;background:var(--ok);display:inline-block}
+.icon-btn{
+  width:34px;height:34px;flex:none;border-radius:50%;
+  display:grid;place-items:center;color:var(--muted);
+  transition:color .16s var(--ease),background .16s var(--ease);
+}
+.icon-btn:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.icon-btn svg{width:16px;height:16px}
+
+/* ---------- 页 ---------- */
+.page{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:42px 32px 80px}
+.jhead{display:flex;justify-content:space-between;align-items:flex-end;gap:40px}
+.jhead h1{
+  margin-top:10px;
+  font-family:var(--font-serif);font-size:var(--fs-34);font-weight:400;
+  line-height:1.35;letter-spacing:.02em;color:var(--text);
+}
+.jhead .sub{margin-top:8px;max-width:54ch;font-size:var(--fs-14);color:var(--muted);line-height:1.8}
+.tools{display:flex;align-items:center;gap:10px;margin-top:26px;flex-wrap:wrap}
+.search{
+  position:relative;display:flex;align-items:center;
+  width:300px;height:36px;
+  border:1px solid var(--line);border-radius:6px;
+  background:rgba(255,255,255,.02);
+  transition:border-color .16s var(--ease);
+}
+.search:focus-within{border-color:rgba(201,168,106,.5)}
+.search svg{width:14px;height:14px;margin-left:11px;color:var(--muted);flex:none}
+.search input{
+  width:100%;height:100%;padding:0 10px;
+  background:none;border:none;outline:none;
+  font-family:var(--font-sans);font-size:var(--fs-14);color:var(--text);
+}
+.search input::placeholder{color:var(--muted)}
+.count{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);white-space:nowrap}
+
+/* 分类 */
+.suits{display:flex;gap:6px;margin:26px 0 22px;flex-wrap:wrap}
+.suit{
+  height:32px;padding:0 13px;border:1px solid var(--line);border-radius:5px;
+  font-size:var(--fs-13);color:var(--muted);letter-spacing:.04em;
+  transition:color .16s var(--ease),border-color .16s var(--ease),background .16s var(--ease);
+}
+.suit:hover{color:var(--text-2);border-color:var(--line-2)}
+.suit[aria-pressed="true"]{
+  color:var(--gold);border-color:rgba(201,168,106,.45);
+  background:rgba(201,168,106,.06);
+}
+
+/* ---------- 索引 + 详情 ---------- */
+.lib{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:44px;align-items:start}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:20px 14px}
+.ccard{text-align:left;min-width:0}
+.ccard .frame{
+  display:block;border-radius:4px;overflow:hidden;
+  box-shadow:0 8px 20px -12px rgba(0,0,0,.9),0 0 0 1px rgba(201,168,106,.12);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease),outline-color .2s var(--ease);
+  outline:1px solid transparent;outline-offset:3px;
+}
+.ccard .frame img{display:block;width:100%;aspect-ratio:420/711;object-fit:cover}
+.ccard:hover .frame{transform:translateY(-3px);box-shadow:0 14px 26px -12px rgba(0,0,0,.95),0 0 0 1px rgba(201,168,106,.28)}
+.ccard b{
+  display:block;margin-top:7px;font-family:var(--font-serif);font-size:var(--fs-12);
+  font-weight:400;color:var(--muted);letter-spacing:.03em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.ccard[aria-pressed="true"] .frame{
+  outline-color:var(--gold);
+  box-shadow:0 14px 30px -12px rgba(201,168,106,.35),0 0 0 1px var(--gold);
+}
+.ccard[aria-pressed="true"] b{color:var(--gold)}
+.ccard:focus-visible{outline:none}
+.ccard:focus-visible .frame{outline-color:var(--gold-2)}
+
+/* 详情 */
+.detail{
+  position:sticky;top:78px;
+  padding:20px 20px 18px;
+  border:1px solid var(--line);border-radius:10px;
+  background:linear-gradient(180deg,rgba(21,18,31,.92),rgba(16,14,25,.96));
+  box-shadow:0 30px 60px -40px rgba(0,0,0,.9);
+}
+.dtop{display:flex;gap:16px;align-items:flex-start}
+.dimg{flex:none;width:132px}
+.dimg .frame{
+  display:block;border-radius:4px;overflow:hidden;
+  box-shadow:0 16px 30px -16px rgba(0,0,0,.95),0 0 0 1px rgba(201,168,106,.18);
+}
+.dimg img{display:block;width:100%;aspect-ratio:420/711;object-fit:cover;transition:transform .35s var(--ease)}
+.dimg.is-rev img{transform:rotate(180deg)}
+.dhead{min-width:0;flex:1}
+.dhead .kicker{display:block;font-family:var(--font-mono);font-size:var(--fs-12);color:var(--gold);letter-spacing:.04em;line-height:1.6}
+.dhead h2{
+  margin-top:6px;
+  font-family:var(--font-serif);font-size:var(--fs-26);font-weight:400;
+  line-height:1.25;color:var(--text);letter-spacing:.03em;
+}
+.seg{display:inline-flex;margin-top:12px;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{
+  height:28px;padding:0 10px;font-size:var(--fs-12);color:var(--muted);
+  background:none;border:none;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{color:var(--gold);background:rgba(201,168,106,.08)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.tags li{
+  padding:3px 8px;border:1px solid var(--line);border-radius:3px;
+  font-size:var(--fs-12);color:var(--text-2);letter-spacing:.03em;
+}
+.dsec{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.dsec h3{
+  font-family:var(--font-mono);font-size:var(--fs-12);font-weight:400;
+  color:var(--muted);letter-spacing:.08em;text-transform:uppercase;
+}
+.dsec p{margin-top:9px;font-size:var(--fs-14);line-height:1.85;color:var(--text-2)}
+.dsec h3 .hint{font-family:var(--font-sans);font-size:var(--fs-12);color:var(--muted-2);letter-spacing:0;text-transform:none;margin-left:8px}
+.dsec p.quiet{color:var(--muted)}
+.dsec .em{color:var(--text)}
+.pos-list{margin-top:8px}
+.pos-list li{display:flex;gap:10px;padding:5px 0;font-size:var(--fs-13);line-height:1.65;color:var(--muted)}
+.pos-list b{
+  flex:none;width:34px;font-family:var(--font-mono);font-size:var(--fs-12);
+  font-weight:400;color:var(--gold);
+}
+.dmeta{
+  display:grid;grid-template-columns:1fr 1fr;gap:7px 14px;margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--line);font-size:var(--fs-12);color:var(--muted);
+}
+.dmeta span{display:flex;justify-content:space-between;gap:8px}
+.dmeta b{font-family:var(--font-mono);font-weight:400;color:var(--text-2)}
+.dactions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.dnote{margin-top:10px;font-size:var(--fs-12);color:var(--muted);line-height:1.6}
+.empty{
+  grid-column:1/-1;padding:60px 0;text-align:center;
+  font-size:var(--fs-14);color:var(--muted);
+}
+.empty a{color:var(--gold);text-decoration:underline;text-underline-offset:3px}
+
+/* ---------- 页脚 ---------- */
+.page-foot{
+  position:relative;z-index:1;
+  max-width:1200px;margin:0 auto;padding:18px 32px 40px;
+  border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  font-size:var(--fs-12);color:var(--muted-2);
+}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.page-foot .mono{color:var(--muted)}
+
+@media (max-width:1000px){
+  .lib{grid-template-columns:1fr;gap:36px}
+  .detail{position:static;order:-1;max-width:560px;margin:0 auto;width:100%}
+}
+@media (max-width:900px){
+  .topbar{padding:0 18px;gap:14px}
+  .nav{display:none}
+  .status-chip{display:none}
+  .jhead{flex-direction:column;align-items:stretch;gap:0}
+  .jhead .tools{width:100%;margin-top:18px}
+  .search{width:100%}
+  .page-foot{padding:16px 22px 34px}
+}
+@media (max-width:640px){
+  .brand-sub{display:none}
+  .brand{gap:9px}
+  .page{padding:28px 18px 56px}
+  .jhead h1{font-size:var(--fs-26)}
+  .jhead{flex-direction:column;align-items:stretch;gap:0}
+  .tools{width:100%;gap:8px}
+  .search{width:100%}
+  .count{width:100%}
+  .cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 10px}
+  .ccard b{font-size:var(--fs-12)}
+  .detail{padding:16px}
+  .dimg{width:108px}
+  .dhead h2{font-size:var(--fs-26)}
+  .page-foot{flex-direction:column;align-items:flex-start;gap:6px;padding:16px 18px 30px}
+}
+</style>
+</head>
+<body>
+<div class="astral"></div>
+
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Olivia 首页">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.6C12.9 8.1 15.9 11.1 21.4 12C15.9 12.9 12.9 15.9 12 21.4C11.1 15.9 8.1 12.9 2.6 12C8.1 11.1 11.1 8.1 12 2.6Z" fill="currentColor"/></svg>
+    </span>
+    <span>
+      <span class="brand-name">Olivia</span>
+      <span class="brand-sub">奥莉薇娅 · 不替你决定的塔罗师</span>
+    </span>
+  </a>
+
+  <nav class="nav" aria-label="主导航">
+    <a href="/">解读</a>
+    <a href="/cards" aria-current="page">牌义</a>
+    <a href="/care">关怀</a>
+  </nav>
+
+  <span class="spacer"></span>
+
+  <span class="status-chip"><span class="dot"></span>离线可用 · 牌义在本地</span>
+  <a class="icon-btn" href="/" aria-label="回到对话">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <path d="M15 5l-7 7 7 7"/>
+    </svg>
+  </a>
+  <a class="btn btn--gold" href="/">新对话</a>
+</header>
+
+<main class="page">
+  <header class="jhead">
+    <div>
+      <p class="kicker"><span class="diamond"></span>牌义 · LIBRARY</p>
+      <h1>78 张牌，先看清楚它自己</h1>
+      <p class="sub">牌义来自 1909 年韦特牌和本地的牌义库，不是模型临场编的。大阿卡纳逐张写；小阿卡纳按花色 × 数字读——这也是 Olivia 在牌阵里用的读法。</p>
+    </div>
+    <div class="tools">
+      <label class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+        <input id="q" type="search" placeholder="搜牌名、关键词…" aria-label="搜索牌义">
+      </label>
+      <span class="count" id="count">78 张</span>
+    </div>
+  </header>
+
+  <div class="suits" role="group" aria-label="按花色筛选">
+    <button class="suit" data-group="all" aria-pressed="true">全部</button>
+    <button class="suit" data-group="major" aria-pressed="false">大阿卡纳 · 22</button>
+    <button class="suit" data-group="wands" aria-pressed="false">权杖 · 14</button>
+    <button class="suit" data-group="cups" aria-pressed="false">圣杯 · 14</button>
+    <button class="suit" data-group="swords" aria-pressed="false">宝剑 · 14</button>
+    <button class="suit" data-group="pentacles" aria-pressed="false">星币 · 14</button>
+  </div>
+
+  <div class="lib">
+    <section class="cards" id="grid" aria-label="78 张牌"></section>
+
+    <aside class="detail" id="detail" aria-live="polite">
+      <div class="dtop">
+        <div class="dimg" id="dimgWrap">
+          <span class="frame"><img id="dimg" src="/cards/major-03.jpeg" alt="皇后"></span>
+        </div>
+        <div class="dhead">
+          <span class="kicker" id="dkicker">大阿卡纳 · III · 土</span>
+          <h2 id="dname">皇后</h2>
+          <div class="seg" role="group" aria-label="正位或逆位">
+            <button data-or="up" aria-pressed="true">正位</button>
+            <button data-or="rev" aria-pressed="false">逆位</button>
+          </div>
+        </div>
+      </div>
+
+      <ul class="tags" id="dtags">
+        <li>丰盛</li><li>滋养</li><li>创造</li><li>母性</li>
+      </ul>
+
+      <section class="dsec">
+        <h3>牌意速览 <span class="hint">一句话，先看它大概在说什么</span></h3>
+        <p id="dtext">她坐在麦田里，身后是水，坐着不动，让东西自己长。</p>
+      </section>
+
+      <section class="dsec">
+        <h3>放在牌阵里</h3>
+        <ul class="pos-list">
+          <li><b>过去</b><span>它是你带进来的底子：发生过的事，或者你曾经被怎样对待。</span></li>
+          <li><b>现在</b><span>它是此刻的卡点，也是你可以动的那一处。</span></li>
+          <li><b>未来</b><span>它是趋势，不是预言；你仍然可以改。</span></li>
+        </ul>
+      </section>
+
+      <div class="dmeta" id="dmeta">
+        <span>元素 <b>土</b></span><span>数字 <b>III</b></span>
+        <span>牌组 <b>大阿卡纳</b></span>
+      </div>
+
+      <div class="dactions">
+        <a class="btn btn--gold btn--sm" id="askCard" href="/">带着这张牌去问</a>
+        <a class="btn btn--quiet btn--sm" href="/">回到对话</a>
+      </div>
+      <p class="dnote">牌义是骨架。同一张牌落在不同位置、不同问题里，重量会变。</p>
+    </aside>
+  </div>
+</main>
+
+<footer class="page-foot">
+  <span><span class="mono">127.0.0.1:8765</span> · 牌义离线可用</span>
+  <span>牌源 1909 韦特 · 本地牌义库 · CC BY-NC-SA</span>
+</footer>
+
+<script>
+const grid = document.getElementById('grid');
+const q = document.getElementById('q');
+const count = document.getElementById('count');
+let ALL = [], cards = [], group = 'all', selected = null, orient = 'up';
+
+function syncAsk(){
+  const c = ALL.find(x => x.id === selected);
+  const a = document.getElementById('askCard');
+  if(!c || !a) return;
+  a.href = '/?card=' + encodeURIComponent(c.name) + '&orient=' + orient;
+}
+
+function esc(v){
+  return String(v == null ? '' : v).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+}
+
+function makeGrid(){
+  grid.innerHTML = '';
+  ALL.forEach(c => {
+    c.img = '/' + c.image;
+    const b = document.createElement('button');
+    b.className = 'ccard';
+    b.type = 'button';
+    b.dataset.id = c.id;
+    b.dataset.group = c.group;
+    b.dataset.text = [c.name, c.core, c.brief_up, c.brief_rev].join(' ');
+    b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = `<span class="frame"><img src="${esc(c.img)}" alt="" loading="lazy"></span><b>${esc(c.name)}</b>`;
+    b.addEventListener('click', () => select(c.id));
+    grid.appendChild(b);
+  });
+  cards = [...grid.querySelectorAll('.ccard')];
+}
+
+function shortTags(c){
+  const raw = String(c.core || '').split(/[、，,;；]/).map(s => s.trim()).filter(s => s && s.length <= 8);
+  const tags = [...new Set(raw)].slice(0, 4);
+  if(!tags.length){
+    if(c.element) tags.push(c.element);
+    if(c.deck) tags.push(c.deck);
+  }
+  return tags;
+}
+function select(id, noScroll){
+  const c = ALL.find(x => x.id === id) || ALL[0];
+  if(!c) return;
+  selected = c.id;
+  orient = 'up';
+  cards.forEach(b => b.setAttribute('aria-pressed', b.dataset.id === c.id ? 'true' : 'false'));
+
+  document.getElementById('dimg').src = c.img;
+  document.getElementById('dimg').alt = c.name;
+  document.getElementById('dimgWrap').classList.remove('is-rev');
+  document.getElementById('dname').textContent = c.name;
+  document.getElementById('dkicker').textContent = c.deck + ' · ' + c.num + (c.element ? ' · ' + c.element : '');
+
+  const tags = shortTags(c);
+  document.getElementById('dtags').innerHTML = tags.map(t => `<li>${esc(t)}</li>`).join('');
+  document.getElementById('dtext').textContent = c.brief_up || '本地牌义库里还没有这张牌的整理。';
+  const isCourt = c.group !== 'major' && ['侍从','骑士','王后','国王'].includes(c.num);
+  document.getElementById('dmeta').innerHTML =
+    `<span>元素 <b>${esc(c.element || '—')}</b></span>` +
+    `<span>${isCourt ? '位阶' : (c.group === 'major' ? '数字' : '序号')} <b>${esc(c.num)}</b></span>` +
+    `<span>牌组 <b>${esc(c.deck)}</b></span>`;
+  document.querySelector('.seg [data-or="up"]').setAttribute('aria-pressed','true');
+  document.querySelector('.seg [data-or="rev"]').setAttribute('aria-pressed','false');
+  syncAsk();
+
+  try { history.replaceState(null, '', '/cards#' + c.id); } catch(e) {}
+  if(!noScroll && window.innerWidth <= 1000){
+    document.getElementById('detail').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+}
+
+function setOrient(o){
+  const c = ALL.find(x => x.id === selected);
+  if(!c) return;
+  orient = o;
+  document.querySelector('.seg [data-or="up"]').setAttribute('aria-pressed', o === 'up' ? 'true' : 'false');
+  document.querySelector('.seg [data-or="rev"]').setAttribute('aria-pressed', o === 'rev' ? 'true' : 'false');
+  const text = (o === 'up' ? c.brief_up : c.brief_rev) ||
+    (o === 'up' ? '本地牌义库里还没有这张牌的整理。' : '本地牌义库里还没有这张牌的逆位整理。');
+  document.getElementById('dtext').textContent = text;
+  document.getElementById('dimgWrap').classList.toggle('is-rev', o === 'rev');
+  syncAsk();
+}
+
+function apply(){
+  const term = q.value.trim().toLowerCase();
+  let shown = 0;
+  cards.forEach(b => {
+    const okGroup = group === 'all' || b.dataset.group === group;
+    const okText = !term || b.dataset.text.toLowerCase().includes(term);
+    const ok = okGroup && okText;
+    b.style.display = ok ? '' : 'none';
+    if(ok) shown++;
+  });
+  let empty = grid.querySelector('.empty');
+  if(!shown){
+    if(!empty){
+      empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = '这张牌不在库里。换个词，或者切回全部。';
+      grid.appendChild(empty);
+    }
+  } else if(empty){ empty.remove(); }
+  count.textContent = (term || group !== 'all') ? `找到 ${shown} 张` : '78 张';
+}
+
+async function boot(){
+  grid.innerHTML = '<p class="empty">正在读取本机牌义…</p>';
+  try {
+    const r = await fetch('/api/cards');
+    if(r.status === 401){
+      count.textContent = '未配对';
+      grid.innerHTML = '<p class="empty">牌义需要先在主界面完成配对。<a href="/">回主界面完成配对 →</a></p>';
+      return;
+    }
+    const data = await r.json();
+    ALL = data.cards || [];
+  } catch(e) {
+    grid.innerHTML = '<p class="empty">牌义读取失败：请确认 Olivia 服务还在运行。</p>';
+    return;
+  }
+  if(!ALL.length){
+    grid.innerHTML = '<p class="empty">本地牌义库里还没有牌义文件。</p>';
+    return;
+  }
+  makeGrid();
+  document.querySelectorAll('.suit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.suit').forEach(b => b.setAttribute('aria-pressed','false'));
+      btn.setAttribute('aria-pressed','true');
+      group = btn.dataset.group;
+      apply();
+    });
+  });
+  q.addEventListener('input', apply);
+  document.querySelectorAll('.seg button').forEach(b => {
+    b.addEventListener('click', () => setOrient(b.dataset.or));
+  });
+  const fromHash = decodeURIComponent((location.hash || '').slice(1));
+  select(ALL.some(c => c.id === fromHash) ? fromHash : 'major-03', true);
+  apply();
+}
+
+boot();
+</script>
+<script>document.querySelector('.page-foot .mono')?.replaceChildren(location.host);</script>
+</body>
+</html>

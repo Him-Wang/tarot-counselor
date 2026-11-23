@@ -15,6 +15,7 @@
     "分享图": "Export image",
     "知识库": "Notes",
     "记忆": "Memory",
+    "牌义": "Card meanings",
     "新对话": "New chat",
     "发送": "Send",
     "停止": "Stop",

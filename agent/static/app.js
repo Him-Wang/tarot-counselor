@@ -155,8 +155,9 @@ function setRoute(id, push){
 }
 function renderHistory(){
   chat.innerHTML = '';
+  clearBoard();
   if(!history.length){
-    const w = document.createElement('div'); w.className = 'msg assistant';
+    const w = document.createElement('div'); w.className = 'msg assistant greeting';
     const inn = document.createElement('div');
     const who = document.createElement('div'); who.className = 'who'; who.textContent = 'Olivia';
     const bub = document.createElement('div'); bub.className = 'bub'; bub.textContent = DEFAULT_GREETING;
@@ -165,9 +166,16 @@ function renderHistory(){
   }
   history.forEach(m => {
     const { bub, inner } = addMsg(m.role || 'assistant', m.content || '');
-    if(m.cards) renderCards(inner, bub, m.cards);
+    if(m.cards){ lastCards = m.cards; renderCards(inner, bub, m.cards); }
     if(m.safety) bub.classList.add('safety-line');
   });
+  // 回到旧会话：牌桌的问句取这副牌之后的第一条用户消息
+  let ci = -1;
+  history.forEach((m, i) => { if(m.cards) ci = i; });
+  if(ci >= 0){
+    const q = history.slice(ci + 1).find(x => x.role === 'user' && x.content);
+    if(q) updateBoardQuestion(q.content);
+  }
   chat.scrollTop = chat.scrollHeight;
 }
 function openSession(id, push){
@@ -777,6 +785,116 @@ function renderCards(inner, bub, data, opts){
   }
 
   inner.insertBefore(wrap, bub);
+  renderBoard(data);
+}
+
+/* ---------- 左侧工作台牌桌 ----------
+   同一次抽牌同时渲染到左栏。聊天里的 draw-wrap 保留（导出解读时要用），
+   但在有牌桌时由 CSS 隐藏，避免同一副牌在屏幕上出现两次。 */
+const BOARD_CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫'];
+function boardSafeImg(image){
+  return (typeof image === 'string' && /^cards\/[A-Za-z0-9_\-\.]+\.(jpe?g|png)$/i.test(image))
+    ? image : '';
+}
+function clearBoard(){
+  const el = $('board');
+  if(!el) return;
+  el.hidden = true;
+  el.innerHTML = '';
+  document.body.classList.remove('has-board');
+}
+/* 抽牌发生在提问之前；用户一提问，就把牌桌上的问句补上（离线解读不发新 cards） */
+function updateBoardQuestion(q){
+  const el = $('board');
+  if(!el || !q) return;
+  let node = el.querySelector('.b-question');
+  if(!node){
+    node = document.createElement('p');
+    node.className = 'b-question';
+    const seed = el.querySelector('.b-seed');
+    if(seed) seed.after(node);
+    else el.querySelector('.b-head').after(node);
+  }
+  node.innerHTML = '<span>你问</span>' + escHtml(q);
+  if(lastCards) lastCards.question = q;
+}
+function renderBoard(data){
+  const el = $('board');
+  if(!el) return;
+  const items = (data && data.items) || [];
+  if(!items.length){ clearBoard(); return; }
+  const extras = (data && data.extras) || [];
+  const all = items.concat(extras);
+  const seed = data.seed == null ? '' : String(data.seed);
+  const question = (data.question || '').trim();
+  const circ = n => BOARD_CIRC[n-1] || (n + '.');
+
+  let cardsHtml = '';
+  all.forEach((c, i) => {
+    const safe = boardSafeImg(c.image);
+    const rev = c.orientation === '逆位';
+    const isExtra = i >= items.length;
+    cardsHtml +=
+      '<button class="bcard' + (isExtra ? ' extra' : '') + '" type="button" data-i="' + i + '"' +
+        ' aria-label="' + escAttr((c.position || '') + '：' + (c.name || '') + ' ' + (c.orientation || '') + '，看大图') + '">' +
+        '<span class="b-face">' +
+          (safe ? '<img src="' + escAttr(safe) + '" alt="" loading="lazy" class="' + (rev ? 'rev' : '') + '">' : '') +
+        '</span>' +
+        '<span class="b-pos">' + (isExtra ? '补牌' : circ(i+1) + ' ' + escHtml(c.position || '')) + '</span>' +
+        '<span class="b-name">' + escHtml(c.name || '') +
+          (c.orientation ? '<em class="' + (rev ? 'rev' : '') + '">' + escHtml(c.orientation) + '</em>' : '') +
+        '</span>' +
+      '</button>';
+  });
+
+  let legendHtml = '';
+  items.forEach((c, i) => {
+    legendHtml +=
+      '<div class="b-lg"><span class="n">' + circ(i+1) + '</span>' +
+        '<b>' + escHtml(c.position || '') + '</b>' +
+        '<span>' + escHtml(c.position_meaning || '') + '</span></div>';
+  });
+
+  el.innerHTML =
+    '<div class="b-inner">' +
+      '<div class="b-kicker">本次牌阵 · SPREAD</div>' +
+      '<div class="b-head"><h2>' + escHtml(data.spread || '抽牌') + '</h2>' +
+        '<div class="b-sub">' + escHtml(data.spread_desc || '') +
+          (data.spread_desc ? ' · ' : '') + items.length + ' 张' +
+          (extras.length ? ' + 补 ' + extras.length : '') +
+        '</div></div>' +
+      (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : '') +
+      (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
+      '<div class="b-cards">' + cardsHtml + '</div>' +
+      '<div class="b-acts">' +
+        '<button type="button" data-act="spread">牌阵</button>' +
+        '<button type="button" data-act="redraw">重抽</button>' +
+        '<button type="button" data-act="extra">补一张</button>' +
+        '<span class="b-hint">' + (all.length) + ' 张 · 点牌看大图</span>' +
+      '</div>' +
+      (legendHtml ? '<details class="b-legend"><summary>牌位在问什么</summary>' + legendHtml + '</details>' : '') +
+    '</div>';
+
+  el.hidden = false;
+  document.body.classList.add('has-board');
+  if(matchMedia('(max-width:640px)').matches){
+    chat.querySelectorAll('.msg.greeting').forEach(n => n.remove());
+  }
+
+  el.querySelectorAll('.bcard').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const c = all[Number(btn.dataset.i)];
+      if(c) openLightbox(c);
+    });
+  });
+  el.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const act = btn.dataset.act;
+      if(act === 'spread') send('换一个牌阵');
+      else if(act === 'redraw') send('重抽这副牌');
+      else if(act === 'extra') send('补一张牌');
+    });
+  });
 }
 
 async function loadConfig(){
@@ -826,6 +944,7 @@ $('preset').addEventListener('change', e => {
   $('presetNote').textContent = PRESET_NOTE[v] || '';
 });
 
+$('cardsBtn').onclick = () => { location.href = '/cards'; };
 $('settingsBtn').onclick = () => { openSheet($('overlay')); };
 $('closeBtn').onclick = () => { closeSheet($('overlay')); };
 $('shelfBtn').onclick = () => { renderShelf(); openSheet($('shelfOverlay')); };
@@ -911,6 +1030,7 @@ async function send(textOverride){
   const imgs = pendingImages.slice(); pendingImages=[]; renderImages();
   const shown = text || '（发来一张图片）';
   const um = addMsg('user', shown);
+  if(text && !/^(补一张|重抽|换一个牌阵)/.test(text)) updateBoardQuestion(text);
   if(imgs.length){
     const strip=document.createElement('div'); strip.style.cssText='display:flex;gap:6px;margin-top:6px';
     imgs.forEach(src=>{const im=document.createElement('img');im.src=src;im.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:8px';strip.appendChild(im)});
@@ -1353,7 +1473,7 @@ $('watchClearLogBtn').onclick = async () => {
   await loadCare(true);
   $('careStatus').className='status ok'; $('careStatus').textContent='判定日志已清空';
 };
-$('careBtn').onclick = () => { openSheet($('careOverlay')); loadCare(); watchSourceHint(); };
+$('careBtn').onclick = () => { location.href = '/care'; };
 $('careCloseBtn').onclick = () => { closeSheet($('careOverlay')); };
 $('careMaster').onchange = async e => {
   await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1708,3 +1828,25 @@ if(window.OliviaI18n) window.OliviaI18n.apply(localStorage.getItem('olivia.lang'
 loadConfig();
 loadKB();
 loadCare(true);  // refresh unread badge on page load
+if (new URLSearchParams(location.search).get('care') === '1') {
+  openSheet($('careOverlay'));
+  loadCare();
+  if (typeof watchSourceHint === 'function') watchSourceHint();
+  setTimeout(() => window.history.replaceState(null, '', location.pathname + location.hash), 0);
+}
+
+/* 从牌义页带一张牌回来：开一页新对话，把这句话放进输入框 */
+(function cardToChat(){
+  const params = new URLSearchParams(location.search);
+  const name = params.get('card');
+  if(!name) return;
+  const ori = params.get('orient') === 'rev' ? '逆位' : '正位';
+  try { window.history.replaceState(null, '', location.pathname); } catch(e) {}
+  newSession();
+  const box = $('input');
+  if(box){
+    box.value = '我想从「' + name + '」（' + ori + '）这张牌说起。';
+    box.dispatchEvent(new Event('input', {bubbles:true}));
+    box.focus();
+  }
+})();
