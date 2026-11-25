@@ -124,7 +124,9 @@ let sessionId = newSessionId();
 --------------------------------------------------------------------------- */
 const SHELF_KEY = 'olivia.shelf.v1';
 const SHELF_ACTIVE_KEY = 'olivia.shelf.active.v1';
-const DEFAULT_GREETING = '你好，我是 Olivia（奥莉薇娅）。坐吧，慢慢说——今天是什么把你带到我这儿来的？';
+const ZH_GREETING = '你好，我是 Olivia（奥莉薇娅）。坐吧，慢慢说——今天是什么把你带到我这儿来的？';
+const EN_GREETING = "Hi — I'm Olivia. Sit down, take your time. What brings you here today?";
+const DEFAULT_GREETING = uiText(ZH_GREETING, EN_GREETING);
 
 function loadShelf(){
   try { const a = JSON.parse(localStorage.getItem(SHELF_KEY) || '[]'); return Array.isArray(a) ? a : []; }
@@ -234,10 +236,10 @@ function newSession(){
   openSession(newSessionId(), true);
   // 开场白不再「一次印好」：直接借对话里那条问候气泡，按字落出来。
   const greetBub = chat.querySelector('.msg.greeting .bub');
-  if(greetBub) typeGreeting(greetBub, '新的一页。这次，你想从哪里说起？', 220);
+  if(greetBub) typeGreeting(greetBub, uiText('新的一页。这次，你想从哪里说起？', 'A new page. Where would you like to start?'), 220);
   else {
     const { bub } = addMsg('assistant', '');
-    typeGreeting(bub, '新的一页。这次，你想从哪里说起？', 220);
+    typeGreeting(bub, uiText('新的一页。这次，你想从哪里说起？', 'A new page. Where would you like to start?'), 220);
   }
 }
 function renderShelf(){
@@ -2175,6 +2177,12 @@ if('serviceWorker' in navigator){
   });
 }
 if(window.OliviaI18n) window.OliviaI18n.apply(localStorage.getItem('olivia.lang') || 'zh');
+
+/* 开场那句是界面文案而不是对话内容：切到英文时也要跟着换 */
+if (langEn()) {
+  const gb = chat.querySelector('.msg.greeting .bub');
+  if (gb) gb.textContent = EN_GREETING;
+}
 
 loadConfig();
 loadKB();
