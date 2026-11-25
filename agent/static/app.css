@@ -792,18 +792,28 @@ body.has-board .draw-wrap{display:none}
 }
 .switch input[type=checkbox]:checked{background:var(--gold);border-color:var(--gold)}
 .switch input[type=checkbox]:checked::after{content:"✓";font-size:13px;line-height:1;color:#191307}
-.switch-static{cursor:default;align-items:center;border-radius:var(--radius-xs);padding:9px 0}
-/* 恒定开启的那几行：画一个金色已勾的方块，一眼看出是「开」不是「关」 */
-.switch-static::before{
-  content:"✓";flex:none;width:24px;height:24px;margin-top:1px;
-  display:grid;place-items:center;
-  border:1px solid var(--gold);border-radius:4px;background:var(--gold);
-  color:#191307;font-family:var(--font-sans);font-size:13px;line-height:1;
+/* 恒定开启的两行：做成两张安静的小卡——金色细环勾 + 标题 + 一行灰字说明 */
+.switch-static{
+  cursor:default;display:grid;grid-template-columns:20px minmax(0,1fr);gap:12px;
+  align-items:start;margin:10px 0;padding:12px 14px;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0) 72%);
+  transition:border-color .32s var(--ease-out);
 }
+.switch-static:hover{border-color:rgba(201,168,106,.22)}
+.switch-static .lock-ic{width:20px;height:20px;margin-top:1px;color:var(--gold-bright)}
+.switch-static .lock-ic circle{fill:rgba(201,168,106,.1);stroke:rgba(201,168,106,.52);stroke-width:1.2}
+.switch-static .lock-ic path{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.switch-static .lock-body{display:grid;gap:3px;min-width:0}
+.switch-static .lock-name{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font-size:var(--fs-13);line-height:1.5;letter-spacing:.02em;color:var(--text);
+}
+.switch-static .lock-sub{font-size:var(--fs-12);line-height:1.65;color:var(--muted)}
 .lock-tag{
-  margin-left:auto;padding:1px 6px;
-  border:1px solid var(--line);border-radius:2px;
-  font-family:var(--font-mono);font-size:12px;color:var(--muted-2);white-space:nowrap;
+  margin:0;padding:0;border:0;background:none;
+  font-family:var(--font-mono);font-size:12px;line-height:1.5;
+  letter-spacing:.06em;color:rgba(201,168,106,.58);white-space:nowrap;
 }
 .status{margin:10px 0;font-size:var(--fs-12);line-height:1.7;color:var(--muted);min-height:1px}
 .status.ok{color:var(--ok)}
