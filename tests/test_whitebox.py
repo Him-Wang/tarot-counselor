@@ -23,6 +23,7 @@ import io
 import os
 import sys
 import json
+import random
 import shutil
 import tempfile
 import importlib
@@ -166,6 +167,25 @@ check("不放回（无重复牌）", len(names) == len(set(names)), str(names))
 check("牌位数=10（凯尔特十字）", len(result["cards"]) == 10)
 check("每张牌带牌意", all(c.get("meaning") for c in result["cards"]))
 check("带几何布局", bool(result.get("layout", {}).get("cells")))
+check("同 seed 可复现",
+      [(c["name"], c["orientation"]) for c in tools.draw_cards("三张", "x", seed=42)["cards"]]
+      == [(c["name"], c["orientation"]) for c in tools.draw_cards("三张", "x", seed=42)["cards"]])
+check("默认种子来自系统熵且 < 2^53", 0 <= tools.draw_cards("单张")["seed"] < 2 ** 53)
+check("抽牌流不是 MT19937",
+      tools._SeedStream(42).getrandbits(64) != random.Random(42).getrandbits(64))
+
+# 手动选牌：来访者挑的牌按顺序落位，不经过随机采样
+_picked = tools.draw_cards("三张", "手选", picks=[0, 4, 21], seed=7)
+check("手选直接采用挑出的牌",
+      [c["name"] for c in _picked["cards"]] == ["愚者", "皇帝", "世界"],
+      str([c["name"] for c in _picked["cards"]]))
+check("手选结果标记 manual", _picked.get("manual") is True)
+check("手选仍给正逆位", all(c.get("orientation") in ("正位", "逆位")
+                        for c in _picked["cards"]))
+check("手选忽略重复与越界下标",
+      [c["name"] for c in tools.draw_cards("单张", picks=[3, 3, 99, -1])["cards"]] == ["皇后"])
+_short = tools.draw_cards("三张", picks=[0])
+check("手选张数不足时退回随机", _short.get("manual") is False and len(_short["cards"]) == 3)
 
 
 # --------------------------------------------------------------- memory
@@ -216,6 +236,11 @@ check("解读轮接离线降级", "offline.compose(pending_result" in server_src
 check("模型失败也兜底离线", "fell back to offline" in server_src)
 check("保存配置走密文", 'disk["api_key_enc"] = secret_store.protect(key)' in server_src)
 check("读取配置走解密", 'secret_store.unprotect(enc)' in server_src)
+check("解读轮只读工具白名单",
+      sorted(t["function"]["name"] for t in tools.READ_TOOLS)
+      == ["lookup_card", "search_knowledge"])
+check("解读轮只放开只读工具",
+      "tools.READ_TOOLS" in server_src and "tools.TOOL_GUIDE_READ" in server_src)
 
 
 # ------------------------------------------------------------------ auth

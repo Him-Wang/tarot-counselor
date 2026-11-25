@@ -359,6 +359,7 @@ def _cards_payload(result):
         "spread_desc": result.get("spread_desc", ""),
         "question": result.get("question", ""),
         "seed": result.get("seed"),
+        "manual": bool(result.get("manual")),
         "layout": result.get("layout") or spreads_mod.layout(spread),
         "items": [{
             "position": c.get("position", ""),
@@ -375,6 +376,19 @@ def _cards_payload(result):
             "image": c.get("image", ""),
             "reason": c.get("reason", ""),
         } for c in (result.get("extras") or [])],
+    }
+
+
+def _pick_payload(spread):
+    """选牌轮的舞台数据：牌阵、牌位与张数，由前端摆出扇形牌堆。"""
+    meta = spreads_mod.SPREAD_META.get(spread) or {}
+    positions = meta.get("positions") or []
+    return {
+        "spread": spread,
+        "spread_desc": meta.get("desc", ""),
+        "count": len(positions),
+        "layout": spreads_mod.layout(spread),
+        "positions": [{"name": p[0], "meaning": p[1]} for p in positions],
     }
 
 
@@ -800,6 +814,42 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
 
+        elif p == "/api/pick":
+            # ---- 手动选牌落位：来访者挑好的牌按顺序铺进牌位 ----
+            # 选牌是本地动作，不调用模型；落位后进入正常的「提问 → 解读」两阶段。
+            sid = str(body.get("session_id") or "default")
+            spread = str(body.get("spread") or "三张")
+            if spread not in spreads_mod.SPREADS:
+                self._send_json({"ok": False, "error": "未知牌阵：%s" % spread}, 400)
+                return
+            meta = spreads_mod.SPREAD_META.get(spread) or {}
+            need = len(meta.get("positions") or [])
+            picks = body.get("picks")
+            clean = []
+            if isinstance(picks, list):
+                for v in picks:
+                    try:
+                        idx = int(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if 0 <= idx < len(tools.DECK) and idx not in clean:
+                        clean.append(idx)
+            if len(clean) < need:
+                self._send_json(
+                    {"ok": False, "error": "还需要选择 %d 张牌" % (need - len(clean))}, 400)
+                return
+            result = tools.draw_cards(spread=spread, picks=clean[:need])
+            _pending_draws[sid] = {"result": result, "at": time.time()}
+            try:
+                memory.record_draw(result, "")
+            except Exception as e:
+                print("[pick] record draw failed: %s" % e)
+            self._send_json({
+                "ok": True,
+                "cards": _cards_payload(result),
+                "ask": ASK_AFTER_DRAW,
+            })
+
         elif p == "/api/chat":
             message = body.get("message", "")
             history = body.get("history", [])
@@ -918,12 +968,20 @@ class Handler(BaseHTTPRequestHandler):
             # 全部由 tools.draw_cards 完成，不经过 LLM，因此抽牌/选阵都不需要 API key。
             # 只有解读轮才需要大模型。
             local_draw = None
+            pick_data = None
             spread_list_reply = None
             spread_choices = None
+            # 来访者的界面默认自己点牌：点名牌阵后先进选牌舞台，
+            # 由 /api/pick 把他亲手挑出的牌铺进牌位；不带 pick 的调用仍自动抽。
+            want_pick = bool(body.get("pick"))
             if two_phase and preset_reply is None:
                 # 明确点名牌阵 -> 直接抽；只说「抽牌」-> 先列牌阵让他点按钮。
                 if asks_draw and _named_spread(message):
-                    local_draw = tools.draw_cards(spread=_pick_spread(message))
+                    picked_spread = _pick_spread(message)
+                    if want_pick:
+                        pick_data = _pick_payload(picked_spread)
+                    else:
+                        local_draw = tools.draw_cards(spread=picked_spread)
                 elif asks_draw:
                     spread_list_reply = _spread_choice_reply()
                     spread_choices = _spread_choices()
@@ -981,11 +1039,11 @@ class Handler(BaseHTTPRequestHandler):
             if vision_ctx:
                 system += "\n\n---\n" + vision_ctx
             use_tools = cfg.get("tools_enabled", True)
-            if pending_result:
-                # 解读轮：把已抽出的牌面和来访者的问题作为硬约束注入，
-                # 同时临时禁用 draw_cards 工具，模型无法重抽或换牌。
+            read_only = pending_result is not None and not asks_draw
+            if read_only:
+                # 解读轮：把已抽出的牌面和来访者的问题作为硬约束注入。
+                # 牌面不可变：本轮只放开只读工具，draw_cards 与记忆写入都不交给模型。
                 system += "\n\n---\n" + _pending_context(pending_result, message)
-                use_tools = False
             elif two_phase:
                 # 抽牌轮：牌由系统在本地抽好并直接展示，完全不经过模型；
                 # 系统在本轮根本不会调用 LLM，这段说明只用于其它非抽牌消息。
@@ -996,7 +1054,8 @@ class Handler(BaseHTTPRequestHandler):
                            "我就照着这副牌为你解读。」本轮不要解读任何一张牌；"
                            "等下一轮他给出具体问题后，才只针对这副已抽出的牌解读。")
             if use_tools:
-                system += "\n\n---\n" + tools.TOOL_GUIDE
+                system += "\n\n---\n" + (
+                    tools.TOOL_GUIDE_READ if read_only else tools.TOOL_GUIDE)
             # 两阶段流程下，解读轮的历史里若含上一轮的抽牌说明，不影响解牌；
             # 关键约束已在 system 里显式给出。
             # 上下文裁剪：按消息条数和字符数双重上限，从最旧的开始丢，
@@ -1060,6 +1119,12 @@ class Handler(BaseHTTPRequestHandler):
                     emit({"token": ASK_AFTER_DRAW})
                     _pending_draws[sid] = {"result": local_draw, "at": time.time()}
                     turn_draw = local_draw
+                elif pick_data is not None:
+                    # ---- 选牌轮：牌阵已定，交给来访者从牌堆里亲手挑 ----
+                    # 先默念，再摆出扇形牌堆；挑完由 /api/pick 落牌，回到解读轮。
+                    full.append(MEDITATE_TEXT)
+                    emit({"meditate": MEDITATE_TEXT})
+                    emit({"pick": pick_data})
                 elif preset_reply is not None:
                     full.append(preset_reply)
                     emit({"token": preset_reply})
@@ -1069,7 +1134,7 @@ class Handler(BaseHTTPRequestHandler):
                     emit({"token": spread_list_reply})
                     emit({"spread_choices": spread_choices})
                 elif pending_result is not None and not asks_draw:
-                    # ---- 解读轮：牌面已经抽出，直接推给前端渲染，不调工具 ----
+                    # ---- 解读轮：牌面已经抽出，直接推给前端渲染 ----
                     emit({"cards": _cards_payload(pending_result)})
                     # 用工具摘要的同一格式标出这是已抽出的牌，便于用户对照。
                     emit({"tool": tools.summary("draw_cards", pending_result)})
@@ -1085,13 +1150,76 @@ class Handler(BaseHTTPRequestHandler):
                         for piece in offline.chunks(offline.compose(pending_result, message)):
                             full.append(piece)
                             emit({"token": piece})
-                    else:
+                    elif not use_tools:
                         for ev in provider.stream_chat_events(msgs, cfg, tools=None):
                             if ev["type"] == "token":
                                 full.append(ev["text"])
                                 emit({"token": ev["text"]})
                             elif ev["type"] == "done":
                                 _add_usage(usage_totals, ev.get("usage"))
+                    else:
+                        # 只读工具循环：模型可补查牌义/资料，但改不了牌面，也写不了记忆。
+                        # 最多 3 轮，避免把一次解读拖成工具马拉松。
+                        # 文本边到边推给前端，保留解读的打字机手感。
+                        READ_ROUNDS = 3
+                        round_calls = []
+                        for _round in range(READ_ROUNDS):
+                            round_calls = []
+                            round_text = []
+                            for ev in provider.stream_chat_events(
+                                    msgs, cfg, tools=tools.READ_TOOLS):
+                                if ev["type"] == "token":
+                                    round_text.append(ev["text"])
+                                    full.append(ev["text"])
+                                    emit({"token": ev["text"]})
+                                elif ev["type"] == "tool_calls":
+                                    round_calls = ev["calls"]
+                                elif ev["type"] == "done":
+                                    _add_usage(usage_totals, ev.get("usage"))
+                            if not round_calls:
+                                break
+                            tc_payload = []
+                            result_msgs = []
+                            for c in round_calls:
+                                name = c.get("name", "")
+                                if name in tools.READ_TOOL_NAMES:
+                                    try:
+                                        args = json.loads(c["arguments"]) if c.get("arguments") else {}
+                                    except Exception:
+                                        args = {}
+                                    result = tools.execute(name, args)
+                                    emit({"tool": tools.summary(name, result)})
+                                else:
+                                    # 防御：白名单之外的工具一律不执行。
+                                    result = {"ok": False, "error": "本轮不可用：%s" % name}
+                                    emit({"tool": "已拒绝：%s 不在本轮只读白名单" % name})
+                                tc_payload.append({
+                                    "id": c.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": name,
+                                        "arguments": c.get("arguments") or "{}",
+                                    },
+                                })
+                                result_msgs.append({
+                                    "role": "tool",
+                                    "tool_call_id": c.get("id", ""),
+                                    "content": json.dumps(result, ensure_ascii=False),
+                                })
+                            msgs.append({
+                                "role": "assistant",
+                                "content": "".join(round_text),
+                                "tool_calls": tc_payload,
+                            })
+                            msgs.extend(result_msgs)
+                        if round_calls:
+                            # 轮数用尽：再给模型一次纯文本收尾，避免空回复。
+                            for ev in provider.stream_chat_events(msgs, cfg, tools=None):
+                                if ev["type"] == "token":
+                                    full.append(ev["text"])
+                                    emit({"token": ev["text"]})
+                                elif ev["type"] == "done":
+                                    _add_usage(usage_totals, ev.get("usage"))
                 elif _offline:
                     # ---- 离线无牌对话：不调模型，给不越界的引导 ----
                     emit({"offline": True})

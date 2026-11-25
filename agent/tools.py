@@ -13,9 +13,12 @@ Design rules:
     the conversation as {"role":"tool"} messages for the next model turn.
 """
 
+import hashlib
+import hmac
 import json
 import os
 import random
+import secrets
 
 import knowledge
 import memory
@@ -90,6 +93,15 @@ TOOL_GUIDE = """【可用工具 / 必须遵守】
   并把补牌理由一并交给你；那种情况下可以解读它，但不得据此替换原来的牌。
 调用工具后，依据工具返回的结果继续；工具没给的信息绝不编造。""" % spreads_mod.catalogue()
 
+
+# 解读轮的工具说明：牌已抽出，只允许补查资料，不允许改牌或写记忆。
+TOOL_GUIDE_READ = """【本轮可用工具 / 必须遵守】
+- 只开放两个只读工具：lookup_card(name, orientation) 与 search_knowledge(query)。
+  需要核对某张牌的传统牌意、或补充解牌方法时调用，不要凭印象编。
+- 不得调用 draw_cards：牌已经由系统抽出并展示，不能重抽、换牌或补牌。
+- 不得调用 save_memory / save_note / recall_memory / schedule_reminder / crisis_check：
+  本轮只解读眼前的牌，长期记忆由系统在回合结束后处理。
+- 工具结果只作解读依据，不改变牌阵与牌面；工具没给的信息绝不编造。"""
 
 
 TOOLS = [
@@ -294,27 +306,95 @@ TOOLS = [
 ]
 
 
-def draw_cards(spread="三张", question="", seed=None):
-    """Objective random draw. Returns structured result for the model.
+# 解读轮只读工具：牌面已定，模型只能补查资料，不能重抽、换牌或写记忆。
+READ_TOOL_NAMES = ("lookup_card", "search_knowledge")
+READ_TOOLS = [t for t in TOOLS if t["function"]["name"] in READ_TOOL_NAMES]
 
-    ``seed`` 只影响牌面与正逆位的产生：给同一个 seed（同一牌阵）必然抽到
-    同一副牌。每次抽牌都会生成一个 seed 并随结果返回，供用户复现/自证；
-    不指定 seed 时用系统熵生成一个，行为与改造前同样是客观随机。
+
+# ---- 抽牌随机源 ----
+# 软件拿不到物理真随机；能拿到的最强来源是内核 CSPRNG（os.urandom）。
+# 这里不再用 Mersenne Twister，而是把系统熵生成的种子展开成 HMAC-SHA256
+# 比特流：对外仍是「同种子同一副牌」，但输出不可由线性同余关系反推。
+_SEED_BITS = 53          # 53 位保证前端 JSON 解析不丢精度，且远大于原来的 31 位
+_SEED_LIMIT = 1 << _SEED_BITS
+
+
+class _SeedStream(random.Random):
+    """种子 → HMAC-SHA256 计数器流（CSPRNG），替代 MT19937。
+
+    只覆写 getrandbits / random，sample() 的拒绝采样会自动走这里。
+    """
+
+    def __init__(self, seed):
+        super().__init__(0)  # 建立 Random 接口；MT 状态不再使用
+        self._key = hashlib.sha256(
+            b"olivia-draw-v2:" + str(seed).encode("utf-8")).digest()
+        self._counter = 0
+        self._buf = b""
+
+    def _take(self, n):
+        while len(self._buf) < n:
+            self._counter += 1
+            self._buf += hmac.new(
+                self._key, self._counter.to_bytes(8, "big"),
+                hashlib.sha256).digest()
+        chunk, self._buf = self._buf[:n], self._buf[n:]
+        return chunk
+
+    def getrandbits(self, k):
+        if k <= 0:
+            return 0
+        n = (k + 7) // 8
+        return int.from_bytes(self._take(n), "big") >> (n * 8 - k)
+
+    def random(self):
+        return self.getrandbits(53) / float(1 << 53)
+
+
+def _new_seed():
+    """由系统熵（os.urandom）生成一个新种子。"""
+    return secrets.randbelow(_SEED_LIMIT)
+
+
+def draw_cards(spread="三张", question="", seed=None, picks=None):
+    """抽牌：默认客观随机；传入 picks 时改为来访者亲手挑出的牌。
+
+    ``picks`` 是牌堆下标（0..77）的列表，按顺序落到牌阵的各个牌位。
+    手动选牌时不重抽、不替换，只把选中的牌原样铺开；正逆位仍由 seed 决定。
+    ``seed`` 只影响正逆位的产生：给同一个 seed（同一牌阵）会得到同一组正逆位。
+    不指定 seed 时由系统熵（os.urandom）生成一个 53 位种子，
+    再用 HMAC-SHA256 比特流（CSPRNG）采样，而不是可反推的 MT19937。
     """
     spread = spread if spread in SPREADS else "三张"
     meta = spreads_mod.SPREAD_META.get(spread) or {}
     pos_pairs = meta.get("positions") or [(p, "") for p in SPREADS[spread]]
-    # 每次抽牌都落一个 seed，用户据此可重放同一副牌（自证没有临时挑牌）。
+    # 每次抽牌都落一个 seed，用户据此可重放同一组正逆位。
     if seed is None:
-        seed = random.SystemRandom().randrange(0, 2 ** 31)
+        seed = _new_seed()
     try:
         seed = int(seed)
     except (TypeError, ValueError):
-        seed = random.SystemRandom().randrange(0, 2 ** 31)
-    rng = random.Random(seed)
+        seed = _new_seed()
+    rng = _SeedStream(seed)
     # Sample WITHOUT replacement from the canonical 78-card deck: the same
     # card cannot appear twice in one spread (standard tarot rule).
-    indices = rng.sample(range(78), len(pos_pairs))
+    want = len(pos_pairs)
+    manual = False
+    clean = []
+    if isinstance(picks, (list, tuple)):
+        for v in picks:
+            try:
+                idx = int(v)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx < len(DECK) and idx not in clean:
+                clean.append(idx)
+    if len(clean) >= want:
+        # 来访者手选的牌：顺序即牌位顺序，不再经过随机采样。
+        indices = clean[:want]
+        manual = True
+    else:
+        indices = rng.sample(range(78), want)
     cards = []
     for (pos, pos_meaning), idx in zip(pos_pairs, indices):
         name = DECK[idx]
@@ -336,11 +416,14 @@ def draw_cards(spread="三张", question="", seed=None):
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
         "seed": seed,
+        "manual": manual,
         "layout": spreads_mod.layout(spread),
         "cards": cards,
-        "note": "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。"
-                "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
-                "不要自行编造牌意，也不要把其他牌位的含义套到这里。",
+        "note": ("牌面由来访者亲手从牌堆中挑出，按挑选顺序落到牌位；不得更换、补牌或主观挑选。"
+                 if manual else
+                 "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。")
+                + "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
+                  "不要自行编造牌意，也不要把其他牌位的含义套到这里。",
     }
 
 

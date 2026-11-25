@@ -192,6 +192,46 @@ try:
         check("抽牌不放回", len(names) == len(set(names)), str(names))
     check("抽牌轮不触发安全闸门", not [e for e in evs4 if "safety" in e])
 
+    # ---------------------------------------------------- 手动选牌黑盒
+    # 界面带 pick:true：先给牌阵舞台（不发牌），挑满后 /api/pick 落位，
+    # 再提问时沿用同一副牌进入解读轮，不重新抽。
+    status, raw = http_post_json("/api/chat", {
+        "message": "用三张牌阵抽牌", "history": [],
+        "session_id": "bb-pick", "pick": True,
+    })
+    evs_pick = sse_events(raw)
+    pick_specs = [e["pick"] for e in evs_pick if e.get("pick")]
+    check("手动选牌轮给出 pick 事件", bool(pick_specs), "evs=%r" % evs_pick[:3])
+    check("手动选牌轮不直接发牌", not [e for e in evs_pick if e.get("cards")])
+    if pick_specs:
+        check("pick 舞台张数为 3", pick_specs[-1].get("count") == 3,
+              str(pick_specs[-1].get("count")))
+        check("pick 舞台带牌位", len(pick_specs[-1].get("positions") or []) == 3)
+    status, raw = http_post_json("/api/pick", {
+        "session_id": "bb-pick", "spread": "三张", "picks": [0, 1, 2],
+    })
+    picked = json.loads(raw.decode("utf-8"))
+    check("选牌落位成功", picked.get("ok"), str(picked)[:200])
+    picked_items = (picked.get("cards") or {}).get("items") or []
+    picked_names = [c.get("name") for c in picked_items]
+    check("手选的牌按挑选顺序落位", picked_names == ["愚者", "魔术师", "女祭司"],
+          str(picked_names))
+    check("手工牌面标记 manual", (picked.get("cards") or {}).get("manual") is True)
+    try:
+        http_post_json("/api/pick", {
+            "session_id": "bb-pick", "spread": "三张", "picks": [0],
+        })
+        too_few = False
+    except urllib.error.HTTPError as e:
+        too_few = e.code == 400
+    check("选牌张数不足被拒绝", too_few)
+
+    status, evs_read = post_chat("这组牌怎么看我的工作", session="bb-pick")
+    read_cards = [e["cards"] for e in evs_read if e.get("cards", {}).get("items")]
+    check("落牌后解读轮沿用同一副牌",
+          bool(read_cards) and [c.get("name") for c in read_cards[-1]["items"]] == picked_names,
+          str(read_cards[-1]["items"] if read_cards else None)[:200])
+
     # ------------------------------------------- 离线整理降级（无 key）
     # 接续 bb-draw 的那副牌给出问题：解读轮应走离线整理，不发牌不调模型，
     # 明确标注 offline，正文带传统牌意/牌位/复现种子，且不伪装成 AI 解读。

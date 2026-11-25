@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="dsh-design" content="web">
 <title>Olivia · 关怀</title>
-<link rel="stylesheet" href="/static/design-tokens.css">
-<link rel="stylesheet" href="/static/design-components.css">
+<link rel="stylesheet" href="/static/design-tokens.css?v=12">
+<link rel="stylesheet" href="/static/design-components.css?v=5">
 <style>
 /* ============================================================
    Olivia · 关怀
@@ -15,44 +15,40 @@
 html{scroll-behavior:smooth}
 body{min-height:100vh}
 
-.topbar{
-  position:sticky;top:0;z-index:20;
-  display:flex;align-items:center;gap:26px;
-  height:58px;padding:0 24px;
-  border-bottom:1px solid var(--line);
-  background:rgba(10,9,16,.88);backdrop-filter:blur(16px);
+/* 这一页只在出事时被打开，所以不放导航栏：只留一个固定的出口 */
+.care-exit{
+  position:fixed;top:14px;right:18px;z-index:40;
+  display:inline-flex;align-items:center;gap:6px;
+  min-height:32px;padding:0 14px;border-radius:var(--radius-pill);
+  border:1px solid var(--line-2);
+  background:rgba(10,9,16,.9);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  box-shadow:0 6px 20px rgba(0,0,0,.45);
+  font-size:var(--fs-12);color:var(--muted);letter-spacing:.02em;
+  transition:color .16s var(--ease),border-color .16s var(--ease);
 }
-.nav{display:flex;align-items:center;gap:2px;margin-left:6px}
-.nav a{
-  position:relative;display:inline-flex;align-items:center;min-height:34px;
-  padding:0 10px;border-radius:5px;
-  font-size:var(--fs-13);color:var(--muted);letter-spacing:.04em;
-  transition:color .16s var(--ease),background .16s var(--ease);
-}
-.nav a:hover{color:var(--text-2);background:rgba(255,255,255,.03)}
-.nav a[aria-current="page"]{color:var(--text)}
-.nav a[aria-current="page"]::after{
-  content:"";position:absolute;left:10px;right:10px;bottom:3px;height:1px;
-  background:var(--gold);opacity:.8;
-}
-.topbar .spacer{flex:1}
-.status-chip{
-  display:inline-flex;align-items:center;gap:7px;
-  height:30px;padding:0 10px;
-  border:1px solid var(--line);border-radius:5px;
-  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);
-  white-space:nowrap;
-}
-.status-chip .dot{width:5px;height:5px;border-radius:50%;background:var(--gold);display:inline-block}
-.icon-btn{
-  width:34px;height:34px;flex:none;border-radius:50%;
-  display:grid;place-items:center;color:var(--muted);
-  transition:color .16s var(--ease),background .16s var(--ease);
-}
-.icon-btn:hover{color:var(--text);background:rgba(255,255,255,.04)}
-.icon-btn svg{width:16px;height:16px}
+.care-exit:hover{color:var(--gold-bright);border-color:rgba(201,168,106,.45)}
 
-.care{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:64px 32px 90px}
+/* 页头：不吸顶，只是把「这是谁、什么时候会来」说清楚 */
+.care-head{
+  display:flex;align-items:center;gap:10px;
+  min-height:32px;padding:0 76px 0 0;
+}
+.care-head .mark{
+  display:grid;place-items:center;flex:none;
+  width:18px;height:18px;color:var(--gold);
+}
+.care-head .mark svg{width:18px;height:18px}
+.care-head .brand-name{
+  font-size:var(--fs-13);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--text-2);
+}
+.care-head .care-note{
+  margin-left:auto;
+  font-size:var(--fs-12);color:var(--muted-2);letter-spacing:.02em;
+}
+
+.care{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:40px 32px 90px}
 .kicker{display:flex;align-items:center;gap:8px}
 
 .hero{padding-bottom:44px}
@@ -67,6 +63,13 @@ body{min-height:100vh}
   display:flex;align-items:center;gap:8px;
 }
 .hero .quiet .diamond{opacity:.7}
+/* 从对话里被带过来时的那句话 */
+.hero .said{
+  margin-top:22px;max-width:34em;
+  font-family:var(--font-serif);font-size:var(--fs-15);line-height:1.9;
+  color:var(--gold-bright);letter-spacing:.01em;
+}
+.hero .said[hidden]{display:none}
 
 /* 急救号码 */
 .urgent{
@@ -175,15 +178,13 @@ body{min-height:100vh}
 .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
 @media (max-width:900px){
-  .topbar{padding:0 18px;gap:14px}
-  .nav{display:none}
-  .status-chip{display:none}
+  .care-head{padding-right:0}
+  .care-head .care-note{display:none}
   .care{padding:44px 22px 64px}
   .page-foot{padding:16px 22px 34px}
 }
 @media (max-width:640px){
-  .brand-sub{display:none}
-  .brand{gap:9px}
+  .care-exit{top:10px;right:12px}
   .care{padding:34px 18px 56px}
   .hero h1{font-size:var(--fs-34)}
   .hero .sub{font-size:var(--fs-14)}
@@ -198,39 +199,24 @@ body{min-height:100vh}
 </head>
 <body>
 <div class="astral"></div>
+<div class="sky" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i><i class="l6"></i></div>
+<div class="veil"></div>
 
-<header class="topbar">
-  <a class="brand" href="/" aria-label="Olivia 首页">
+<a class="care-exit" href="/">← 回到对话</a>
+
+<main class="care">
+  <div class="care-head">
     <span class="mark" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.6C12.9 8.1 15.9 11.1 21.4 12C15.9 12.9 12.9 15.9 12 21.4C11.1 15.9 8.1 12.9 2.6 12C8.1 11.1 11.1 8.1 12 2.6Z" fill="currentColor"/></svg>
     </span>
-    <span>
-      <span class="brand-name">Olivia</span>
-      <span class="brand-sub">奥莉薇娅 · 不替你决定的塔罗师</span>
-    </span>
-  </a>
+    <span class="brand-name">Olivia</span>
+    <span class="care-note">危机时 · 会自动停牌</span>
+  </div>
 
-  <nav class="nav" aria-label="主导航">
-    <a href="/">解读</a>
-    <a href="/cards">牌义</a>
-    <a href="/care" aria-current="page">关怀</a>
-  </nav>
-
-  <span class="spacer"></span>
-
-  <span class="status-chip"><span class="dot"></span>危机时 · 会自动停牌</span>
-  <a class="icon-btn" href="/" aria-label="回到对话">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-      <path d="M15 5l-7 7 7 7"/>
-    </svg>
-  </a>
-  <a class="btn btn--gold" href="/">新对话</a>
-</header>
-
-<main class="care">
   <section class="hero">
     <p class="kicker"><span class="diamond"></span>关怀 · CARE</p>
     <h1>如果你现在不太好，<br>先不抽牌。</h1>
+    <p class="said" hidden>刚才那句话，我停下来了，没有解牌——先把这些放在你面前。</p>
     <p class="sub">这里不是占卜。下面是一些能立刻用上的东西，你不需要先解释什么，也不需要先证明自己真的很难受。</p>
     <p class="quiet"><span class="diamond"></span>这个页面不记录访问，也不会出现在会话簿里。</p>
   </section>
@@ -320,6 +306,12 @@ body{min-height:100vh}
   <span><span class="mono">127.0.0.1:8765</span> · 本地优先</span>
   <span>危机原文不入库 · 牌不开口，人开口</span>
 </footer>
-<script>document.querySelector('.page-foot .mono')?.replaceChildren(location.host);</script>
+<script>
+document.querySelector('.page-foot .mono')?.replaceChildren(location.host);
+if (new URLSearchParams(location.search).get('from') === 'chat') {
+  const said = document.querySelector('.hero .said');
+  if (said) said.hidden = false;
+}
+</script>
 </body>
 </html>

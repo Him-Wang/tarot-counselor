@@ -141,3 +141,227 @@ ul,ol{margin:0;padding:0;list-style:none}
 .scroll::-webkit-scrollbar-thumb{background:rgba(232,226,214,.16);border-radius:8px;border:2px solid transparent;background-clip:content-box}
 .scroll::-webkit-scrollbar-thumb:hover{background:rgba(232,226,214,.28);background-clip:content-box}
 .scroll::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 繁星层（全站共用：主界面 / 牌义 / 关怀） ---------- */
+/* 六层不同密度、不同呼吸节奏交错，让每颗星看起来是自己闪的，
+   而不是整片天空一起明暗。瓦片尺寸互质，避免看出重复。 */
+.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.sky i{
+  position:absolute;inset:-32%;transform-origin:50% 50%;
+  display:block;background-repeat:repeat;
+  will-change:opacity,rotate;
+}
+.sky .l1{
+  background-size:421px 421px;
+  animation:twinkleA 5.4s ease-in-out infinite;
+  animation-delay:-0.7s;
+  background-image:
+    radial-gradient(1.31px 1.31px at 15.81px 105.55px, rgba(255,252,244,0.28), rgba(255,252,244,0.1) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.68px 1.68px at 235.88px 216.49px, rgba(255,252,244,0.34), rgba(255,252,244,0.12) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.58px 1.58px at 135.68px 155.84px, rgba(255,252,244,0.35), rgba(255,252,244,0.12) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.24px 1.24px at 169.49px 246.5px, rgba(212,224,255,0.4), rgba(212,224,255,0.14) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.54px 1.54px at 296.25px 194.83px, rgba(212,224,255,0.28), rgba(212,224,255,0.1) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.56px 1.56px at 417.01px 283.69px, rgba(255,252,244,0.32), rgba(255,252,244,0.11) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.64px 1.64px at 364.93px 215.86px, rgba(212,224,255,0.26), rgba(212,224,255,0.09) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.57px 1.57px at 305.42px 248.33px, rgba(232,208,160,0.31), rgba(232,208,160,0.11) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(1.46px 1.46px at 261.47px 256.07px, rgba(255,252,244,0.38), rgba(255,252,244,0.13) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.44px 1.44px at 301.4px 23.22px, rgba(212,224,255,0.43), rgba(212,224,255,0.15) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.48px 1.48px at 161.2px 67.94px, rgba(232,208,160,0.42), rgba(232,208,160,0.15) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(1.44px 1.44px at 197.28px 414.78px, rgba(255,252,244,0.41), rgba(255,252,244,0.14) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.52px 1.52px at 158.54px 290.41px, rgba(255,252,244,0.46), rgba(255,252,244,0.16) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.37px 1.37px at 217.1px 246.19px, rgba(212,224,255,0.42), rgba(212,224,255,0.15) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.33px 1.33px at 108.82px 258.27px, rgba(255,252,244,0.44), rgba(255,252,244,0.15) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.41px 1.41px at 304.79px 46.36px, rgba(212,224,255,0.45), rgba(212,224,255,0.16) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.54px 1.54px at 267.5px 336.11px, rgba(212,224,255,0.39), rgba(212,224,255,0.14) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.16px 1.16px at 300.45px 345.79px, rgba(212,224,255,0.39), rgba(212,224,255,0.14) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.19px 1.19px at 265.93px 113.92px, rgba(212,224,255,0.4), rgba(212,224,255,0.14) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.32px 1.32px at 142.56px 93.13px, rgba(212,224,255,0.39), rgba(212,224,255,0.13) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.32px 1.32px at 144.28px 28.81px, rgba(212,224,255,0.34), rgba(212,224,255,0.12) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.19px 1.19px at 103.81px 290.97px, rgba(255,252,244,0.43), rgba(255,252,244,0.15) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.62px 1.62px at 37.41px 32.3px, rgba(212,224,255,0.38), rgba(212,224,255,0.13) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.44px 1.44px at 5.79px 221.59px, rgba(212,224,255,0.41), rgba(212,224,255,0.14) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.47px 1.47px at 6.53px 310.67px, rgba(255,252,244,0.41), rgba(255,252,244,0.14) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.46px 1.46px at 74.72px 16.54px, rgba(255,252,244,0.26), rgba(255,252,244,0.09) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.49px 1.49px at 145.07px 299.2px, rgba(255,252,244,0.41), rgba(255,252,244,0.14) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.18px 1.18px at 372.7px 372.4px, rgba(255,252,244,0.37), rgba(255,252,244,0.13) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.54px 1.54px at 299.45px 308.67px, rgba(212,224,255,0.27), rgba(212,224,255,0.09) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.31px 1.31px at 226.44px 15.13px, rgba(212,224,255,0.45), rgba(212,224,255,0.16) 46%, rgba(212,224,255,0) 70%);
+}
+.sky .l2{
+  background-size:362px 362px;
+  animation:twinkleB 7.2s ease-in-out infinite;
+  animation-delay:-2.9s;
+  background-image:
+    radial-gradient(2.19px 2.19px at 180.12px 46.64px, rgba(212,224,255,0.51), rgba(212,224,255,0.18) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2px 2px at 177.22px 98.93px, rgba(232,208,160,0.56), rgba(232,208,160,0.19) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(1.91px 1.91px at 297.1px 42.53px, rgba(212,224,255,0.71), rgba(212,224,255,0.25) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.03px 2.03px at 81.71px 240.08px, rgba(255,252,244,0.48), rgba(255,252,244,0.17) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.84px 1.84px at 65.73px 307.68px, rgba(212,224,255,0.49), rgba(212,224,255,0.17) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.64px 1.64px at 8.96px 339.07px, rgba(255,252,244,0.56), rgba(255,252,244,0.2) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.6px 1.6px at 328.94px 86.65px, rgba(212,224,255,0.51), rgba(212,224,255,0.18) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.61px 1.61px at 307.11px 97.69px, rgba(232,208,160,0.47), rgba(232,208,160,0.17) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(1.9px 1.9px at 204.22px 308.5px, rgba(255,252,244,0.45), rgba(255,252,244,0.16) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.96px 1.96px at 247.41px 248.21px, rgba(212,224,255,0.47), rgba(212,224,255,0.16) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.92px 1.92px at 191.22px 333.21px, rgba(255,252,244,0.61), rgba(255,252,244,0.21) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.99px 1.99px at 241.06px 63.15px, rgba(212,224,255,0.49), rgba(212,224,255,0.17) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.65px 1.65px at 101.46px 282.18px, rgba(255,252,244,0.62), rgba(255,252,244,0.22) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.2px 2.2px at 197.77px 13.21px, rgba(212,224,255,0.69), rgba(212,224,255,0.24) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.96px 1.96px at 259.83px 173.56px, rgba(255,252,244,0.51), rgba(255,252,244,0.18) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.83px 1.83px at 192.55px 296.69px, rgba(255,252,244,0.48), rgba(255,252,244,0.17) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.15px 2.15px at 299.89px 225.08px, rgba(232,208,160,0.68), rgba(232,208,160,0.24) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.12px 2.12px at 69.21px 333.14px, rgba(232,208,160,0.47), rgba(232,208,160,0.16) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.09px 2.09px at 0.97px 47.97px, rgba(255,252,244,0.54), rgba(255,252,244,0.19) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.89px 1.89px at 89.67px 206.59px, rgba(255,252,244,0.62), rgba(255,252,244,0.22) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.16px 2.16px at 167.45px 166.93px, rgba(232,208,160,0.69), rgba(232,208,160,0.24) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.03px 2.03px at 128.59px 352.24px, rgba(232,208,160,0.48), rgba(232,208,160,0.17) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(1.63px 1.63px at 76.31px 231.42px, rgba(255,252,244,0.61), rgba(255,252,244,0.21) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(1.65px 1.65px at 199.81px 87.4px, rgba(232,208,160,0.7), rgba(232,208,160,0.24) 46%, rgba(232,208,160,0) 70%);
+}
+.sky .l3{
+  background-size:523px 523px;
+  animation:twinkleA 6.1s ease-in-out infinite;
+  animation-delay:-1.6s;
+  background-image:
+    radial-gradient(2.01px 2.01px at 267.08px 176px, rgba(212,224,255,0.99), rgba(212,224,255,0.34) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.35px 2.35px at 232.16px 196.57px, rgba(232,208,160,0.64), rgba(232,208,160,0.22) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.11px 2.11px at 517.56px 258.17px, rgba(255,252,244,0.78), rgba(255,252,244,0.27) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.57px 2.57px at 8.53px 8.45px, rgba(212,224,255,0.95), rgba(212,224,255,0.33) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.67px 2.67px at 81.57px 364.23px, rgba(212,224,255,0.87), rgba(212,224,255,0.3) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.53px 2.53px at 57.39px 345.87px, rgba(212,224,255,0.92), rgba(212,224,255,0.32) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.51px 2.51px at 53.84px 474.17px, rgba(255,252,244,0.95), rgba(255,252,244,0.33) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.08px 2.08px at 54.38px 254.46px, rgba(232,208,160,0.66), rgba(232,208,160,0.23) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.08px 2.08px at 288.48px 348.94px, rgba(212,224,255,0.84), rgba(212,224,255,0.29) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.03px 2.03px at 435.07px 340.43px, rgba(232,208,160,0.69), rgba(232,208,160,0.24) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.57px 2.57px at 50.75px 206px, rgba(212,224,255,0.73), rgba(212,224,255,0.25) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.27px 2.27px at 308.88px 237.93px, rgba(212,224,255,0.92), rgba(212,224,255,0.32) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.73px 2.73px at 283.36px 441.13px, rgba(255,252,244,0.83), rgba(255,252,244,0.29) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.4px 2.4px at 327.36px 130.06px, rgba(232,208,160,0.91), rgba(232,208,160,0.32) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.69px 2.69px at 35.67px 487.4px, rgba(212,224,255,0.84), rgba(212,224,255,0.29) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.38px 2.38px at 105.92px 277.9px, rgba(255,252,244,0.66), rgba(255,252,244,0.23) 46%, rgba(255,252,244,0) 70%);
+}
+.sky .l4{
+  background-size:613px 613px;
+  animation:twinkleB 8.6s ease-in-out infinite;
+  animation-delay:-4.3s;
+  background-image:
+    radial-gradient(1.96px 1.96px at 390.53px 145.48px, rgba(212,224,255,0.92), rgba(212,224,255,0.32) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.45px 2.45px at 402.9px 338.39px, rgba(232,208,160,0.68), rgba(232,208,160,0.24) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.59px 2.59px at 294.99px 322.06px, rgba(212,224,255,0.86), rgba(212,224,255,0.3) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.6px 2.6px at 554.08px 298.36px, rgba(255,252,244,0.61), rgba(255,252,244,0.21) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.23px 2.23px at 211.15px 99.56px, rgba(232,208,160,0.88), rgba(232,208,160,0.31) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2.13px 2.13px at 541.83px 511.37px, rgba(232,208,160,0.82), rgba(232,208,160,0.29) 46%, rgba(232,208,160,0) 70%),
+    radial-gradient(2px 2px at 295.94px 124.67px, rgba(255,252,244,0.63), rgba(255,252,244,0.22) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.34px 2.34px at 216.37px 296.01px, rgba(212,224,255,0.83), rgba(212,224,255,0.29) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.94px 1.94px at 491.14px 431.08px, rgba(255,252,244,0.92), rgba(255,252,244,0.32) 46%, rgba(255,252,244,0) 70%),
+    radial-gradient(2.49px 2.49px at 369.16px 434.62px, rgba(212,224,255,0.9), rgba(212,224,255,0.31) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.12px 2.12px at 55.28px 402.97px, rgba(212,224,255,0.63), rgba(212,224,255,0.22) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(2.52px 2.52px at 228.13px 20.58px, rgba(212,224,255,0.94), rgba(212,224,255,0.33) 46%, rgba(212,224,255,0) 70%),
+    radial-gradient(1.96px 1.96px at 377.72px 325.17px, rgba(212,224,255,0.7), rgba(212,224,255,0.25) 46%, rgba(212,224,255,0) 70%);
+}
+.sky .l5{
+  background-size:769px 769px;
+  animation:twinkleA 5.9s ease-in-out infinite;
+  animation-delay:-2.1s;
+  background-image:
+    radial-gradient(3.17px 3.17px at 338.64px 758.03px, rgba(232,208,160,0.84), rgba(232,208,160,0.24) 40%, rgba(232,208,160,0) 74%),
+    radial-gradient(3.06px 3.06px at 139.85px 346.52px, rgba(232,208,160,0.8), rgba(232,208,160,0.22) 40%, rgba(232,208,160,0) 74%),
+    radial-gradient(3.11px 3.11px at 517.35px 414.36px, rgba(212,224,255,0.95), rgba(212,224,255,0.27) 40%, rgba(212,224,255,0) 74%),
+    radial-gradient(3.41px 3.41px at 336.47px 726.27px, rgba(255,252,244,0.81), rgba(255,252,244,0.23) 40%, rgba(255,252,244,0) 74%),
+    radial-gradient(3.45px 3.45px at 282.18px 66.65px, rgba(255,252,244,0.91), rgba(255,252,244,0.25) 40%, rgba(255,252,244,0) 74%),
+    radial-gradient(3.46px 3.46px at 674.1px 355.36px, rgba(212,224,255,0.94), rgba(212,224,255,0.26) 40%, rgba(212,224,255,0) 74%),
+    radial-gradient(3.37px 3.37px at 309.22px 247.81px, rgba(212,224,255,0.96), rgba(212,224,255,0.27) 40%, rgba(212,224,255,0) 74%),
+    radial-gradient(3.71px 3.71px at 105.44px 289.34px, rgba(255,252,244,0.81), rgba(255,252,244,0.23) 40%, rgba(255,252,244,0) 74%),
+    radial-gradient(3.55px 3.55px at 701.02px 395.19px, rgba(212,224,255,0.74), rgba(212,224,255,0.21) 40%, rgba(212,224,255,0) 74%);
+}
+.sky .l6{
+  background-size:1103px 1103px;
+  animation:twinkleC 12.5s ease-in-out infinite;
+  animation-delay:-5.4s;
+  background-image:
+    radial-gradient(4.98px 4.98px at 226.39px 659.2px, rgba(212,224,255,0.66), rgba(212,224,255,0.18) 40%, rgba(212,224,255,0) 74%),
+    radial-gradient(4.28px 4.28px at 2.6px 268.08px, rgba(255,252,244,0.7), rgba(255,252,244,0.2) 40%, rgba(255,252,244,0) 74%),
+    radial-gradient(5.11px 5.11px at 90.13px 283.79px, rgba(212,224,255,0.64), rgba(212,224,255,0.18) 40%, rgba(212,224,255,0) 74%),
+    radial-gradient(4.63px 4.63px at 509.42px 1022.3px, rgba(255,252,244,0.63), rgba(255,252,244,0.18) 40%, rgba(255,252,244,0) 74%),
+    radial-gradient(4.26px 4.26px at 538.91px 478.26px, rgba(232,208,160,0.85), rgba(232,208,160,0.24) 40%, rgba(232,208,160,0) 74%);
+}
+@keyframes twinkleA{
+  0%,100%{opacity:.20}
+  16%{opacity:1}
+  36%{opacity:.32}
+  58%{opacity:.94}
+  78%{opacity:.26}
+}
+@keyframes twinkleB{
+  0%,100%{opacity:.16}
+  22%{opacity:1}
+  44%{opacity:.28}
+  66%{opacity:.92}
+  86%{opacity:.24}
+}
+@keyframes twinkleC{
+  0%,100%{opacity:.22}
+  46%{opacity:.86}
+}
+/* 缓慢自转：整片天在转，各层速度不同才有厚度——
+   近处（细尘多、瓦片小）转得快一点，远处（大瓦片）几乎不动。 */
+@keyframes skySpin{to{rotate:360deg}}
+.sky .l1{animation:twinkleA 5.4s ease-in-out -0.7s infinite, skySpin 300s linear infinite}
+.sky .l2{animation:twinkleB 7.2s ease-in-out -2.9s infinite, skySpin 520s linear infinite -40s}
+.sky .l3{animation:twinkleA 6.1s ease-in-out -1.6s infinite, skySpin 380s linear infinite -90s}
+.sky .l4{animation:twinkleB 8.6s ease-in-out -4.3s infinite, skySpin 640s linear infinite -150s}
+.sky .l5{animation:twinkleA 5.9s ease-in-out -2.1s infinite, skySpin 760s linear infinite -60s}
+.sky .l6{animation:twinkleC 12.5s ease-in-out -5.4s infinite, skySpin 980s linear infinite -210s}
+/* 这里的闪烁与自转是用户点名要的效果，且幅度极小（最慢一层 980 秒转一圈、
+   亮度只在 .2–1 之间起伏），所以不跟随 prefers-reduced-motion 关闭；
+   其它装饰动效（牌面漂浮、消息入场）仍然在 app.css 里照常关闭。 */
+
+/* ---------- 高级感质感层（全站共用） ---------- */
+/* 金属渐变 / 发丝线 / 极淡胶片颗粒：把「塑料感」压掉的三件东西。
+   颗粒贴在 body::after 上，指针穿透，任何页面都自带一层底片质感。 */
+:root{
+  --gold-grad:linear-gradient(158deg,#F2E0B9 0%,#DEC28D 24%,#C9A86A 52%,#A5854E 78%,#8B6F40 100%);
+  --hair-x:linear-gradient(90deg,rgba(232,226,214,0),rgba(232,226,214,.18) 16%,rgba(232,226,214,.18) 84%,rgba(232,226,214,0));
+  --hair-y:linear-gradient(180deg,rgba(232,226,214,0),rgba(232,226,214,.16) 14%,rgba(232,226,214,.16) 86%,rgba(232,226,214,0));
+  --glow-gold:0 0 36px -8px rgba(201,168,106,.4);
+  --shadow-lift:0 28px 56px -32px rgba(0,0,0,.96);
+  --ease-out:cubic-bezier(.22,.68,.28,1);
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:3;pointer-events:none;
+  opacity:.055;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+  background-size:140px 140px;
+}
+
+/* ---------- 光与边缘（全站共用） ---------- */
+/* 一张「舞台灯」：内容在中间亮，四周往黑里收。
+   有了它，纯黑的边角就不再是死黑，画面有了进深。 */
+.veil{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(120% 86% at 50% 34%, rgba(10,9,16,0) 38%, rgba(6,5,11,.5) 78%, rgba(4,3,8,.82) 100%),
+    radial-gradient(70% 42% at 50% 0%, rgba(201,168,106,.05), transparent 70%);
+}
+/* 顶部一道极淡的暖光，像灯从画外打进来 */
+.veil::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:280px;
+  background:linear-gradient(180deg, rgba(201,168,106,.055), rgba(201,168,106,0));
+}
+
+::selection{background:rgba(201,168,106,.26);color:#FFF9EC}
+
+/* 滚动条：细、无轨道、只在靠近时才亮 */
+*{scrollbar-width:thin;scrollbar-color:rgba(201,168,106,.24) transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{
+  background:linear-gradient(180deg, rgba(201,168,106,.26), rgba(201,168,106,.12));
+  border-radius:99px;border:2px solid transparent;background-clip:padding-box;
+}
+::-webkit-scrollbar-thumb:hover{
+  background:linear-gradient(180deg, rgba(201,168,106,.42), rgba(201,168,106,.2));
+  background-clip:padding-box;
+}
+
+/* 数字一律等宽，免得计数跳动带起版式抖动 */
+.mono,[class*="count"],[class*="usage"]{font-variant-numeric:tabular-nums}

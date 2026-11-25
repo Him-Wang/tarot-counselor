@@ -9,7 +9,8 @@
   border:1px solid rgba(201,168,106,.5);
   display:grid;place-items:center;
   color:var(--gold-bright);
-  background:radial-gradient(circle at 50% 38%, rgba(201,168,106,.16), transparent 68%);
+  background:radial-gradient(circle at 50% 38%, rgba(201,168,106,.2), transparent 70%);
+  box-shadow:0 0 0 4px rgba(201,168,106,.05), 0 8px 20px -14px rgba(201,168,106,.6);
 }
 .mark svg{width:16px;height:16px;display:block}
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
@@ -17,42 +18,49 @@
 .brand-name{
   display:block;padding-right:4px;
   font-family:var(--font-serif);font-size:22px;font-weight:400;
-  letter-spacing:.08em;line-height:1.1;color:var(--text);
+  letter-spacing:.12em;line-height:1.1;color:#F4EFE4;
 }
-.brand-sub{display:block;font-size:var(--fs-12);color:var(--muted);letter-spacing:.1em;line-height:1.4}
+.brand-sub{display:block;font-size:var(--fs-12);color:var(--muted-2);letter-spacing:.12em;line-height:1.4}
 
 /* ---------- 按钮 ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  min-height:34px;padding:0 12px;
+  min-height:34px;padding:0 13px;
   border:1px solid var(--line-2);border-radius:var(--radius-sm);
   background:transparent;color:var(--text-2);
-  font-size:var(--fs-13);letter-spacing:.02em;white-space:nowrap;
-  transition:color .16s var(--ease),border-color .16s var(--ease),background .16s var(--ease);
+  font-size:var(--fs-13);letter-spacing:.06em;white-space:nowrap;
+  transition:color .18s var(--ease-out),border-color .18s var(--ease-out),background .18s var(--ease-out),transform .18s var(--ease-out);
 }
-.btn:hover{color:var(--text);border-color:rgba(201,168,106,.45)}
+.btn:hover{color:var(--text);border-color:rgba(201,168,106,.45);background:rgba(255,255,255,.025)}
 .btn:active{transform:translateY(1px)}
 .btn .icon{width:14px;height:14px}
 
+/* 主按钮：金属渐变 + 上缘一道高光，不用纯色块 */
 .btn--gold{
-  background:var(--gold);border-color:var(--gold);color:#171208;font-weight:500;
+  border:1px solid rgba(255,255,255,.16);border-radius:999px;
+  background:var(--gold-grad);color:#1A1408;font-weight:600;letter-spacing:.14em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 10px 24px -18px rgba(201,168,106,.7);
 }
-.btn--gold:hover{background:var(--gold-bright);border-color:var(--gold-bright);color:#171208}
+.btn--gold:hover{
+  color:#1A1408;background:var(--gold-grad);border-color:rgba(255,255,255,.2);
+  filter:brightness(1.05);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.48), 0 14px 30px -18px rgba(201,168,106,.85);
+}
 
 .btn--quiet{border-color:transparent;color:var(--muted)}
-.btn--quiet:hover{border-color:var(--line);color:var(--text-2)}
+.btn--quiet:hover{border-color:var(--line);color:var(--text-2);background:transparent}
 
-.btn--sm{min-height:28px;padding:0 9px;font-size:var(--fs-12);gap:5px}
+.btn--sm{min-height:28px;padding:0 10px;font-size:var(--fs-12);gap:5px}
 .btn--sm .icon{width:12px;height:12px}
 
 /* ---------- 工具 chip（等宽，表示这是机器侧的东西） ---------- */
 .chip{
   display:inline-flex;align-items:center;gap:6px;
-  height:28px;padding:0 9px;
-  border:1px solid var(--line);border-radius:5px;
-  font-family:var(--font-mono);font-size:var(--fs-12);
+  height:28px;padding:0 10px;
+  border:1px solid var(--line);border-radius:999px;
+  font-family:var(--font-mono);font-size:var(--fs-12);letter-spacing:.06em;
   color:var(--muted);white-space:nowrap;line-height:1;
-  transition:color .16s var(--ease),border-color .16s var(--ease);
+  transition:color .16s var(--ease-out),border-color .16s var(--ease-out);
 }
 .chip:hover{color:var(--text-2);border-color:var(--line-2)}
 .chip .icon{width:11px;height:11px}
@@ -70,15 +78,20 @@
 /* ---------- 塔罗牌框 ---------- */
 .tarot{
   position:relative;width:100%;aspect-ratio:420/711;
-  border-radius:3px;overflow:hidden;background:var(--panel-3);
-  box-shadow:var(--shadow-card);
-  transition:transform .3s var(--ease),box-shadow .3s var(--ease);
+  border-radius:4px;overflow:hidden;background:var(--panel-3);
+  box-shadow:0 0 0 1px rgba(201,168,106,.2), var(--shadow-card);
+  transition:transform .34s var(--ease-out),box-shadow .34s var(--ease-out);
 }
 .tarot img{width:100%;height:100%;object-fit:cover;display:block}
 .tarot--rev img{transform:rotate(180deg) scale(1.004)}
 .tarot::after{
-  content:"";position:absolute;inset:0;border-radius:3px;pointer-events:none;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10), inset 0 -30px 40px -30px rgba(0,0,0,.6);
+  content:"";position:absolute;inset:0;border-radius:4px;pointer-events:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.1), inset 0 -30px 40px -30px rgba(0,0,0,.6);
+}
+.tarot:hover{
+  transform:translateY(-3px);
+  box-shadow:0 0 0 1px rgba(201,168,106,.42), 0 26px 48px -26px rgba(0,0,0,.95),
+             0 18px 54px -34px rgba(201,168,106,.55);
 }
 
 /* ---------- 头像 / 说话人 ---------- */

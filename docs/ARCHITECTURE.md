@@ -101,9 +101,17 @@ sequenceDiagram
       S->>S: plugin_vision 描述图片，拼成文字线索
     end
     opt 来访者明确要求抽牌
-      S->>T: draw_cards(spread)
-      T-->>S: 牌面 + 正逆位 + 牌意 + 复现种子 + 布局
-      S-->>C: SSE tool → meditate → cards → token(固定提问)
+      alt 界面手选（pick=true）
+        S-->>C: SSE tool → meditate → pick(牌阵/牌位/张数)
+        C->>S: POST /api/pick {spread, picks[]}
+        S->>T: draw_cards(spread, picks)
+        T-->>S: 按挑选顺序落位的牌面 + 正逆位
+        S-->>C: JSON cards + ask（牌面写入 pending）
+      else 系统随机
+        S->>T: draw_cards(spread)
+        T-->>S: 牌面 + 正逆位 + 牌意 + 复现种子 + 布局
+        S-->>C: SSE tool → meditate → cards → token(固定提问)
+      end
       Note over S: 牌面存入该 session 的 pending，30 分钟内等提问
     end
     C->>S: 下一轮：就着这副牌说出问题
@@ -126,10 +134,10 @@ sequenceDiagram
 要点：
 
 1. **安全闸门在最前。** `safety.detect()` 在视觉桥、抽牌、主模型与记忆之前执行；命中即切断，历史中的危机残留也会被过滤。可选的 `safety_second_check` 默认关闭；开启后只会把正则未命中但表达模糊的那一句先发给模型做一次 YES/NO 分类，再决定是否切断。
-2. **两阶段抽牌。** 抽牌轮完全本地：`tools.draw_cards()` 从 78 张牌中不放回抽样，返回牌面、牌意、布局与种子，本轮不调用模型。牌面按 `session_id` 暂存在内存，等下一轮问题到来才解读。
-3. **解读轮是硬约束。** 已抽出的牌面、牌位含义与传统牌意被写进 system，工具被临时关闭，模型不能重抽、换牌或自行补牌。
+2. **两阶段抽牌。** 抽牌轮完全本地：`tools.draw_cards()` 从 78 张牌中不放回抽样，返回牌面、牌意、布局与种子，本轮不调用模型。种子来自系统熵（`secrets` → `os.urandom`），采样由 HMAC-SHA256 比特流（`_SeedStream`）完成，不再使用 MT19937，但同一 seed 仍能精确复现同一副牌。牌面按 `session_id` 暂存在内存，等下一轮问题到来才解读。界面默认走**手选**：牌阵定下后 `/api/chat` 只发 `pick` 舞台（不发牌），来访者挑满张数后 `POST /api/pick` 把下标按顺序交给 `draw_cards(picks=…)`，只随机正逆位，并按同一套 pending 流程进入解读轮；不带 `pick` 的 API 调用仍保持自动随机抽牌。
+3. **解读轮是硬约束。** 已抽出的牌面、牌位含义与传统牌意被写进 system；这一轮只给模型 `lookup_card` / `search_knowledge` 两个只读工具，`draw_cards` 与记忆写入工具都不下发，模型不能重抽、换牌或自行补牌。
 4. **补牌是显式路径。** 只有识别到来访者主动“补一张”才调用 `tools.extra_card()`，理由写入 `extras.jsonl`，原牌不替换。
-5. **agentic loop。** 非两阶段的普通对话最多 6 轮“模型 → 工具 → 模型”；每次工具调用先执行 `tools.execute()`，再把结果作为 `role=tool` 消息送回模型。
+5. **agentic loop。** 普通对话最多 6 轮“模型 → 工具 → 模型”；解读轮另有只读工具循环，最多 3 轮，轮数用尽后再补一次纯文本收尾。每次工具调用先执行 `tools.execute()`，再把结果作为 `role=tool` 消息送回模型。
 6. **离线兜底。** 没有可用 key、模型连接失败或当日 token 预算用尽时，不伪装成 AI 解读，只按本地牌面与传统牌意整理，并发出 `offline` 标记。
 7. **预算守卫。** 设置了 `daily_token_budget` 后，当日累计用量达到上限就自动转离线；本地抽牌、看牌与读牌位不受影响。
 8. **历史裁剪。** 发给模型的历史受 `max_history_messages` 与 `max_history_chars` 限制，既控制成本，也避免把过长的旧上下文重新带出本机。
@@ -142,6 +150,7 @@ sequenceDiagram
 | `tool` | 一次工具调用的可读摘要，前端显示 ⚙ 徽章。 |
 | `cards` | 结构化牌面：牌阵、布局、每张牌的名、正逆位、位置、图片、补牌。 |
 | `meditate` | 抽牌前的仪式引导语，前端先打字、停顿，再翻牌。 |
+| `pick` | 手选舞台：`{spread, spread_desc, count, positions[]}`，前端摆出扇形牌堆与牌位。 |
 | `usage` | 本轮累计 tokens：`{in, out, total}`，为 0 时不发。 |
 | `done` | 本轮结束标记。 |
 | `budget` | 当日预算：`{limit, used, exceeded}`，只在配置了 `daily_token_budget` 时发。 |
@@ -183,7 +192,7 @@ sequenceDiagram
 5. 在 `summary()` 里加一个分支，给界面生成短徽章文案；不加也能跑，但会落到通用文案。
 6. 补测试：白盒至少验证函数纯逻辑；涉及 HTTP 行为时在黑盒里发真实请求。`server.py` 的 agentic loop 会自动执行新工具，不需要改路由。
 
-注意：抽牌、补牌这类会破坏“客观随机”的工具不要只靠模型自觉。抽牌由服务端编排，补牌只走显式按钮路径，`draw_cards` 在解读轮还会被临时禁用。
+注意：抽牌、补牌这类会破坏“客观随机”的工具不要只靠模型自觉。抽牌由服务端编排，补牌只走显式按钮路径，`draw_cards` 在解读轮压根不下发给模型（只给 `READ_TOOLS` 里的只读工具）。新增工具时想让它进入解读轮，必须显式加进 `tools.READ_TOOL_NAMES`，并且不能有副作用。
 
 如果还想把同一个能力暴露给 MCP 客户端，需要在 `agent/mcp_server.py` 的 `TOOLS` 与 `call_tool()` 里另外注册；它只读知识库与抽牌，不共享 `tools.EXECUTORS`，也不读写用户记忆和配置。
 

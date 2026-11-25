@@ -71,7 +71,7 @@ All three protocols share the same agentic loop and tool calls. The key is writt
 
 ## A reading has four beats
 
-**One: draw.** You tap "draw" and she lists 39 spreads: one card, three cards, Celtic Cross, Tree of Life, seven chakras, relationship, either/or, yes/no, four seasons… Each position says on hover what it asks about. No replacement, reversals rotated 180°, laid out in traditional geometry. Fully local, zero API calls.
+**One: draw.** You tap "draw" and she lists 39 spreads: one card, three cards, Celtic Cross, Tree of Life, seven chakras, relationship, either/or, yes/no, four seasons… Each position says on hover what it asks about. Once the spread is set, a fan of cards opens on the table: drag to browse, tap one and it flies into the next position; pick as many as the spread needs, in order. You can also let her draw at random. No replacement, reversals rotated 180°, laid out in traditional geometry. Fully local, zero API calls.
 
 **Two: wait for your question.** Then she asks one thing: "What would you like to ask?" She will not guess from the cards before you speak. That is the point of the two-phase draw: cards first, question second.
 
@@ -83,7 +83,7 @@ All three protocols share the same agentic loop and tool calls. The key is writt
 
 ## Why she is trustworthy
 
-**The cards are not made up.** The 78 images are public-domain scans (`agent/cards/`, see `SOURCE.md`). Every draw carries a seed: same seed, same spread, same cards — you can reproduce it and check that she did not cherry-pick.
+**The cards are not made up.** The 78 images are public-domain scans (`agent/cards/`, see `SOURCE.md`). In hand-pick mode the cards are the ones you chose yourself, placed in pick order, marked "manual" with no seed line. In random mode every draw carries a seed: same seed, same spread, same cards — you can reproduce it and check that she did not cherry-pick. The seed comes from system entropy (`os.urandom`), and sampling runs on an HMAC-SHA256 bit stream (CSPRNG) rather than a reversible MT19937.
 
 **Time is real.** Every turn injects the current date and time, so "tonight before bed" or "tomorrow at seven" rests on actual time, not years from training data.
 
@@ -97,7 +97,7 @@ All three protocols share the same agentic loop and tool calls. The key is writt
 
 ## What she can do
 
-A real agentic loop: the model decides whom to call, and the UI shows each step with a ⚙ badge.
+A real agentic loop: the model decides whom to call, and the UI shows each step with a ⚙ badge. Once the cards are drawn, the reading round locks the spread and only exposes the two read-only tools `lookup_card` / `search_knowledge` — the model can check references, but cannot redraw, swap cards or write memory.
 
 | Tool | Purpose |
 |---|---|

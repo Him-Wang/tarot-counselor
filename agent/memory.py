@@ -228,6 +228,24 @@ def _store_draw(conn, draw, question, now):
 
 # ---------- public API ----------
 
+def record_draw(draw, question=""):
+    """把一副已经抽好的牌直接写进抽牌历史。
+
+    手动选牌是一轮独立的请求（选完才回到对话），没有经过 remember()，
+    这里给它留一个同样的结构化入口，保证抽牌历史不漏记。
+    """
+    if not isinstance(draw, dict) or not draw.get("ok"):
+        return False
+    init_db()
+    conn = _conn()
+    try:
+        _store_draw(conn, draw, question, _now())
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def add_fact(kind, text, pinned=False):
     """Insert or refresh a fact (used by the save_memory tool). Returns True."""
     init_db()

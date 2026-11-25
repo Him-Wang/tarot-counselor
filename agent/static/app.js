@@ -189,10 +189,45 @@ function openSession(id, push){
   setRoute(id, push);
   try { localStorage.setItem(SHELF_ACTIVE_KEY, id); } catch(e){}
 }
+/* 固定的一两句话也按字落出来，短句才看得出「她正在打」 */
+function typeGreeting(bub, text, startDelay){
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  bub.textContent = '';
+  bub.classList.add('typewriting');
+  requestAnimationFrame(() => {
+  let i = 0;
+  const step = () => {
+    if(i >= text.length){ bub.classList.remove('typewriting'); return; }
+    const ch = text[i++];
+    bub.textContent += ch;
+    chat.scrollTop = chat.scrollHeight;
+    const base = reduce ? 10 : 46;
+    const pause = reduce ? 0
+      : /[。！？!?]/.test(ch) ? 300 : /[，、；：,;:…—]/.test(ch) ? 180 : 0;
+    setTimeout(step, base + pause + Math.random() * 16);
+  };
+  setTimeout(step, startDelay || 160);
+  });
+}
+
 function newSession(){
+  // 上一轮如果还停在流式/选牌里，切新页时把它收掉，否则输入框会一直是禁用的
+  if(streaming){
+    stopped = true;
+    try { if(abortCtl) abortCtl.abort(); } catch(e){}
+    abortCtl = null; streaming = false;
+    $('sendBtn').disabled = false;
+    $('stopBtn').hidden = true;
+  }
   persistSession();
   openSession(newSessionId(), true);
-  addMsg('assistant', '新的一页。这次，你想从哪里说起？');
+  // 开场白不再「一次印好」：直接借对话里那条问候气泡，按字落出来。
+  const greetBub = chat.querySelector('.msg.greeting .bub');
+  if(greetBub) typeGreeting(greetBub, '新的一页。这次，你想从哪里说起？', 220);
+  else {
+    const { bub } = addMsg('assistant', '');
+    typeGreeting(bub, '新的一页。这次，你想从哪里说起？', 220);
+  }
 }
 function renderShelf(){
   const shelf = loadShelf().slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -695,6 +730,7 @@ function renderCards(inner, bub, data, opts){
   const head = document.createElement('div');
   head.className = 'draw-head';
   head.innerHTML = '<b>' + escHtml(data.spread || '抽牌') + '</b>　' + items.length + ' 张' +
+    (data.manual ? ' · 手选' : '') +
     (data.spread_desc ? '　<span>' + escHtml(data.spread_desc) + '</span>' : '');
   wrap.appendChild(head);
 
@@ -788,6 +824,213 @@ function renderCards(inner, bub, data, opts){
   renderBoard(data);
 }
 
+/* ---------- 手动选牌舞台 ----------
+   牌阵定下之后：扇形牌堆围在牌位上方，拖动翻看，轻点一张抽进下一个牌位。
+   挑满张数后提交 /api/pick，牌面按挑选顺序落位，再回到「提问 → 解读」。 */
+function renderPickStage(inner, bub, data){
+  return new Promise(resolve => {
+    const positions = (data && data.positions) || [];
+    const need = positions.length || 1;
+    const spread = (data && data.spread) || '三张';
+    const picked = [];
+    let pos = 0, vis = 21, suppressUntil = 0, submitting = false, drag = null;
+
+    // 新的一轮开始：先把上一副牌从工作台撤下，避免两副牌同时出现。
+    clearBoard();
+
+    const wrap = document.createElement('div');
+    wrap.className = 'pick-wrap';
+    wrap.innerHTML =
+      '<div class="draw-head"><b>' + escHtml(spread) + '</b>　' + need + ' 张' +
+        (data.spread_desc ? '　<span>' + escHtml(data.spread_desc) + '</span>' : '') + '</div>' +
+      '<div class="pick-slots" role="list" aria-label="' + escHtml(spread) + '牌位"></div>' +
+      '<div class="pick-stage">' +
+        '<button type="button" class="pick-nav prev" aria-label="往前翻牌堆">‹</button>' +
+        '<div class="pick-fan" tabindex="0" role="group" aria-label="牌堆：拖动翻看，轻点一张抽牌"></div>' +
+        '<button type="button" class="pick-nav next" aria-label="往后翻牌堆">›</button>' +
+      '</div>' +
+      '<div class="pick-foot"><span class="pick-hint"></span>' +
+        '<button type="button" class="pick-reset">重选</button></div>';
+
+    const slots = wrap.querySelector('.pick-slots');
+    const fan = wrap.querySelector('.pick-fan');
+    const hint = wrap.querySelector('.pick-hint');
+    const resetBtn = wrap.querySelector('.pick-reset');
+
+    // 牌位：先亮出位置名，抽到的牌一张张压上来（牌背朝上）
+    const slotEls = positions.map((p, i) => {
+      const s = document.createElement('div');
+      s.className = 'pick-slot';
+      s.setAttribute('role', 'listitem');
+      s.innerHTML = '<span class="ps-num">' + (i + 1) + '</span>' +
+        '<span class="ps-name">' + escHtml(p.name || '') + '</span>' +
+        '<span class="ps-meaning">' + escHtml(p.meaning || '') + '</span>' +
+        '<span class="pick-mini" hidden><span class="pm-glyph">✦</span></span>';
+      slots.appendChild(s);
+      return s;
+    });
+
+    // 78 张牌一律牌背朝上：选哪一张由来访者自己决定
+    for(let i = 0; i < 78; i++){
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pick-card';
+      b.dataset.i = String(i);
+      b.setAttribute('aria-label', '牌堆第 ' + (i + 1) + ' 张（牌背）');
+      b.innerHTML = '<span class="pc-glyph">✦</span>';
+      fan.appendChild(b);
+    }
+    const cards = Array.prototype.slice.call(fan.querySelectorAll('.pick-card'));
+
+    function updateHint(){
+      if(submitting) return;
+      const left = need - picked.length;
+      hint.textContent = left > 0
+        ? '还需 ' + left + ' 张 · 拖动牌堆翻看，轻点一张抽出'
+        : '张数够了，正在落位…';
+    }
+
+    // 扇形排布：只显示视口容得下的张数，拖动时整圈平移
+    function layout(){
+      const w = fan.clientWidth || 480;
+      const cardW = w < 620 ? 46 : 56;
+      vis = Math.max(9, Math.min(cards.length, Math.round(w / (cardW * 0.5))));
+      const max = Math.max(0, cards.length - vis);
+      pos = Math.max(0, Math.min(max, pos));
+      const span = Math.min(w - cardW - 16, Math.max(0, (vis - 1) * cardW * 0.62));
+      cards.forEach((card, i) => {
+        const u = (i - pos) / Math.max(1, vis - 1);
+        if(u < -0.06 || u > 1.06 || card.classList.contains('picked')){
+          card.style.visibility = 'hidden';
+          card.style.pointerEvents = 'none';
+          return;
+        }
+        const edge = (u - 0.5) * 2;                 // -1 .. 1
+        const rot = edge * 20;
+        const x = edge * span / 2;
+        const lift = Math.pow(Math.abs(edge), 2) * 16;
+        card.style.visibility = 'visible';
+        card.style.pointerEvents = 'auto';
+        card.style.transform = 'translate(-50%,0) translate(' + x.toFixed(1) + 'px,' +
+          lift.toFixed(1) + 'px) rotate(' + rot.toFixed(1) + 'deg)';
+        card.style.zIndex = String(100 + Math.round((1 - Math.abs(edge)) * 100));
+      });
+    }
+
+    function pick(card){
+      if(submitting || card.disabled) return;
+      const idx = Number(card.dataset.i);
+      if(picked.indexOf(idx) >= 0) return;
+      picked.push(idx);
+      card.classList.add('picked');
+      card.disabled = true;
+      card.style.visibility = 'hidden';
+      const s = slotEls[picked.length - 1];
+      if(s){
+        s.classList.add('filled');
+        const mini = s.querySelector('.pick-mini');
+        if(mini) mini.hidden = false;
+      }
+      layout();
+      updateHint();
+      if(picked.length >= need) submit();
+    }
+
+    async function submit(){
+      if(submitting) return;
+      submitting = true;
+      wrap.classList.add('is-submitting');
+      hint.textContent = '正在把牌放到牌位上…';
+      try{
+        const r = await fetch('/api/pick', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({session_id: sessionId, spread: spread, picks: picked})
+        });
+        const d = await r.json();
+        if(!d || !d.ok) throw new Error((d && d.error) || '落牌失败');
+        window.removeEventListener('resize', onResize);
+        wrap.remove();
+        resolve({cards: d.cards, ask: d.ask || ''});
+      }catch(err){
+        submitting = false;
+        wrap.classList.remove('is-submitting');
+        hint.textContent = '落牌失败：' + ((err && err.message) || err) + ' · 点「重选」再来一次';
+      }
+    }
+
+    function reset(){
+      if(submitting) return;
+      picked.length = 0;
+      cards.forEach(c => {
+        c.classList.remove('picked');
+        c.disabled = false;
+        c.style.visibility = 'visible';
+        c.style.pointerEvents = 'auto';
+      });
+      slotEls.forEach(s => {
+        s.classList.remove('filled');
+        const mini = s.querySelector('.pick-mini');
+        if(mini) mini.hidden = true;
+      });
+      updateHint();
+      layout();
+    }
+
+    // 拖动翻牌堆；移动超过 8px 就当作拖动，不误抽一张
+    fan.addEventListener('pointerdown', e => {
+      if(e.button !== undefined && e.button !== 0) return;
+      drag = {x: e.clientX, pos: pos, moved: 0};
+      fan.classList.add('is-dragging');
+    });
+    fan.addEventListener('pointermove', e => {
+      if(!drag) return;
+      const dx = e.clientX - drag.x;
+      drag.moved = Math.max(drag.moved, Math.abs(dx));
+      pos = drag.pos - dx / 34;
+      layout();
+    });
+    function endDrag(){
+      if(!drag) return;
+      const moved = drag.moved;
+      drag = null;
+      fan.classList.remove('is-dragging');
+      if(moved > 8) suppressUntil = Date.now() + 260;
+      layout();
+    }
+    fan.addEventListener('pointerup', endDrag);
+    fan.addEventListener('pointercancel', endDrag);
+    fan.addEventListener('click', e => {
+      if(Date.now() < suppressUntil) return;
+      const card = e.target.closest && e.target.closest('.pick-card');
+      if(card) pick(card);
+    });
+
+    function page(dir){
+      const max = Math.max(0, cards.length - vis);
+      pos = Math.max(0, Math.min(max, pos + dir * Math.max(1, Math.round(vis / 5))));
+      layout();
+    }
+    wrap.querySelector('.pick-nav.prev').onclick = () => page(-1);
+    wrap.querySelector('.pick-nav.next').onclick = () => page(1);
+    resetBtn.onclick = reset;
+    fan.addEventListener('keydown', e => {
+      if(e.key === 'ArrowLeft'){ page(-1); e.preventDefault(); }
+      else if(e.key === 'ArrowRight'){ page(1); e.preventDefault(); }
+    });
+
+    function onResize(){
+      if(!wrap.isConnected){ window.removeEventListener('resize', onResize); return; }
+      layout();
+    }
+    window.addEventListener('resize', onResize);
+
+    inner.insertBefore(wrap, bub);
+    chat.scrollTop = chat.scrollHeight;
+    updateHint();
+    requestAnimationFrame(layout);
+  });
+}
+
 /* ---------- 左侧工作台牌桌 ----------
    同一次抽牌同时渲染到左栏。聊天里的 draw-wrap 保留（导出解读时要用），
    但在有牌桌时由 CSS 隐藏，避免同一副牌在屏幕上出现两次。 */
@@ -807,16 +1050,18 @@ function clearBoard(){
 function updateBoardQuestion(q){
   const el = $('board');
   if(!el || !q) return;
+  const head = el.querySelector('.b-head');
+  if(!head) return;                       // 牌桌还是空的：没有牌阵可挂问题
   let node = el.querySelector('.b-question');
   if(!node){
     node = document.createElement('p');
     node.className = 'b-question';
     const seed = el.querySelector('.b-seed');
     if(seed) seed.after(node);
-    else el.querySelector('.b-head').after(node);
+    else head.after(node);
   }
   node.innerHTML = '<span>你问</span>' + escHtml(q);
-  if(lastCards) lastCards.question = q;
+  if(typeof lastCards !== 'undefined' && lastCards) lastCards.question = q;
 }
 function renderBoard(data){
   const el = $('board');
@@ -863,7 +1108,9 @@ function renderBoard(data){
           (data.spread_desc ? ' · ' : '') + items.length + ' 张' +
           (extras.length ? ' + 补 ' + extras.length : '') +
         '</div></div>' +
-      (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : '') +
+      (data.manual
+        ? '<p class="b-seed">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出</p>'
+        : (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : '')) +
       (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
       '<div class="b-cards">' + cardsHtml + '</div>' +
       '<div class="b-acts">' +
@@ -1053,16 +1300,48 @@ async function send(textOverride){
   const events = [];          // 只放抽牌轮需要演出的事件（meditate/cards/token）
   let drawMode = false;       // 见到 meditate 即判定为抽牌轮
   const sleep = ms => new Promise(res => setTimeout(res, ms));
-  async function typeText(text){
-    if(reduceMotion){ full+=text; bub.textContent=full; chat.scrollTop=chat.scrollHeight; return; }
+
+  // ── 打字机队列 ────────────────────────────────────────────
+  // 模型可能一口气吐完整段，也可能逐字流式到达；两种都先进队列，再由
+  // 同一个循环按「字」演出来，于是看上去永远是在打，而不是刷地出现。
+  // 积压多 → 加快（跟得上流）；积压少 → 放慢（看得出在打）；标点处停顿。
+  // 系统开了「减少动态效果」时，慢动效（星空、漂浮、入场）该关就关；
+  // 但打字机是内容本身的呈现方式，不是装饰，所以保留，只是调快。
+  let typed='', pending='', typing=false;
+  function enqueue(text){
+    if(!text) return;
+    full += text;
+    pending += text;
     bub.classList.add('typewriting');
-    for(const ch of text){
-      if(stopped) break;                       // 点过「停止」就立刻收手
-      full+=ch; bub.textContent=full; chat.scrollTop=chat.scrollHeight;
-      await sleep(/[，。！？；…]/.test(ch) ? 150 : 34);
-    }
-    bub.classList.remove('typewriting');
+    if(!typing){ typing = true; runTyper(); }
   }
+  async function runTyper(){
+    // 先让光标单独闪一下再落第一个字：短句也能看出是在「打」。
+    await sleep(reduceMotion ? 60 : 180);
+    while(pending.length){
+      if(stopped){ typed += pending; pending=''; bub.textContent=typed; break; }
+      const back = pending.length;
+      const ch = pending.slice(0,1); pending = pending.slice(1);
+      typed += ch;
+      bub.textContent = typed;
+      chat.scrollTop = chat.scrollHeight;
+      let d;
+      if(reduceMotion){ d = 9; }
+      else {
+        d = back > 90 ? 6 : back > 28 ? 20 : 44;
+        if(/[。！？!?]/.test(ch)) d += back > 90 ? 90 : 330;
+        else if(/[，、；：,;:…—]/.test(ch)) d += back > 90 ? 40 : 190;
+        else if(ch === '\n') d += 120;
+      }
+      await sleep(d + Math.random() * 14);
+    }
+    typing = false;
+    if(!pending.length) bub.classList.remove('typewriting');
+  }
+  async function drain(){
+    while(typing || pending.length){ await sleep(40); }
+  }
+  async function typeText(text){ enqueue(text); await drain(); }
   async function showCards(data){
     renderCards(inner, bub, data);
     const wrap = inner.querySelector('.draw-wrap');
@@ -1091,6 +1370,15 @@ async function send(textOverride){
         fl.textContent='⚠ '+obj.fallback; inner.insertBefore(fl, bub); }
       if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
       if(obj.cards){ lastCards=obj.cards; await showCards(obj.cards); }
+      if(obj.pick){
+        // 选牌轮：牌阵已定，等来访者亲手挑满张数后落位
+        const res = await renderPickStage(inner, bub, obj.pick);
+        if(res && res.cards){
+          lastCards = res.cards;
+          renderCards(inner, bub, res.cards, {canExtra:false});
+          if(res.ask) await typeText(res.ask);
+        }
+      }
       if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); chat.scrollTop=chat.scrollHeight; }
       if(obj.token){ await typeText(obj.token); }
       if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
@@ -1098,7 +1386,7 @@ async function send(textOverride){
   }
 
   try{
-    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1),images:imgs,session_id:sessionId}),signal:abortCtl.signal});
+    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,history:history.slice(0,-1),images:imgs,session_id:sessionId,pick:true}),signal:abortCtl.signal});
     const reader = r.body.getReader(), dec = new TextDecoder();
     let buf='';
     while(true){
@@ -1111,6 +1399,7 @@ async function send(textOverride){
         if(!line) continue;
         let obj; try{obj=JSON.parse(line.slice(5).trim())}catch(e){continue}
         if(obj.meditate) drawMode = true;
+        if(obj.pick) drawMode = true;
         if(drawMode){
           // 抽牌轮：收齐 meditate→cards→token，流式结束后按序演出动画。
           events.push(obj);
@@ -1130,7 +1419,7 @@ async function send(textOverride){
           if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); }
           if(obj.budget){ updateUsageChip({total: obj.budget.used}, obj.budget.limit); }
           if(obj.usage){ usageInfo=obj.usage; }
-          if(obj.token){ full+=obj.token; bub.textContent=full; }
+          if(obj.token){ enqueue(obj.token); }
           if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
           chat.scrollTop=chat.scrollHeight;
         }
@@ -1140,7 +1429,11 @@ async function send(textOverride){
     if(e && e.name === 'AbortError'){ stopped = true; }
     else { full+='\n[错误] '+e; bub.textContent=full; }
   }
+  // 流已经结束，剩下的只是本地演出（翻牌/选牌）；不再提供「停止」，避免选牌时卡住。
+  $('stopBtn').hidden = true;
+  abortCtl = null;
   if(events.length) await playEvents();
+  await drain();               // 等最后一个字打完，再挂按钮/存历史
   if(!full && !stopped) bub.textContent='（没有收到回复，检查设置里的连接。）';
   bub.classList.remove('typewriting');
   abortCtl = null;
@@ -1174,6 +1467,27 @@ async function send(textOverride){
     };
     acts.appendChild(spBtn); acts.appendChild(saveBtn);
     inner.appendChild(acts);
+  }
+  // 危机：读完这句就把人送到关怀页（4 秒后自动走，也可以留下或立刻去）
+  if(safetyKind){
+    const go=document.createElement('div'); go.className='care-route';
+    const txt=document.createElement('span');
+    txt.textContent='正在打开关怀页——那里有可以立刻拨的号码。';
+    const stay=document.createElement('button');
+    stay.type='button'; stay.textContent='先留在这里';
+    const now=document.createElement('button');
+    now.type='button'; now.className='primary'; now.textContent='现在就去';
+    now.onclick=()=>{ location.href='/care?from=chat'; };
+    const careTimer=setTimeout(()=>{ location.href='/care?from=chat'; }, 4200);
+    stay.onclick=()=>{
+      clearTimeout(careTimer);
+      txt.textContent='好，留在这里。关怀页随时在左侧「关怀」里。';
+      stay.remove(); now.remove();
+      go.classList.add('is-cancelled');
+    };
+    go.append(txt, stay, now);
+    inner.appendChild(go);
+    chat.scrollTop = chat.scrollHeight;
   }
   // 安全闸门的那条回复不进 history（不让危机文本流进模型上下文）
   if(!safetyKind){
