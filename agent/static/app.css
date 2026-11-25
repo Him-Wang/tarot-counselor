@@ -241,7 +241,7 @@ body.has-board .work{grid-template-columns:minmax(0,1fr) var(--board-w)}
 .msg > div{min-width:0}
 .msg .who{
   display:flex;align-items:center;gap:10px;
-  font-size:11px;letter-spacing:.28em;color:var(--gold);
+  font-size:var(--fs-12);letter-spacing:.28em;color:var(--gold);
   text-transform:uppercase;line-height:1;
 }
 /* 名字前一根渐隐的金线，比纯文字更像版式 */
