@@ -37,6 +37,7 @@ import scheduler
 import watchers
 import plugin_kb
 import plugin_vision
+import plugin_ocr
 import auth
 import backup
 import secret_store
@@ -733,6 +734,7 @@ class Handler(BaseHTTPRequestHandler):
                     "config": plugin_vision.masked_config(),
                     "configured": plugin_vision.is_configured(),
                     "providers": plugin_vision.known_providers(),
+                    "ocr": plugin_ocr.available(),
                 },
             })
         else:
@@ -920,19 +922,45 @@ class Handler(BaseHTTPRequestHandler):
                                and _safety.detect(str(h.get("content", ""))))]
 
             # ---- vision bridge: cloud VLM describes images, feed text to main model ----
+            # 没配云端视觉模型时退到本机 OCR：截图里的字先读出来，主模型照样能接话。
             vision_ctx = ""
-            if images and plugin_vision.is_configured():
-                vcfg = plugin_vision.get_vision_config()
-                for img in images[:3]:
-                    try:
-                        desc = plugin_vision.describe_image(img, vcfg, question=message)
-                        if desc:
-                            vision_ctx += plugin_vision.build_context(desc, message) + "\n"
-                    except Exception as ve:
-                        # m10: log the detail locally; never leak paths/URLs/keys
-                        # into the system prompt or the reply stream.
-                        print("[vision] describe_image failed: %s" % ve)
-                        vision_ctx += "【图片识别失败，已略过图片内容】\n"
+            ocr_text = ""
+            if images:
+                if plugin_vision.is_configured():
+                    vcfg = plugin_vision.get_vision_config()
+                    for img in images[:3]:
+                        try:
+                            desc = plugin_vision.describe_image(img, vcfg, question=message)
+                            if desc:
+                                vision_ctx += plugin_vision.build_context(desc, message) + "\n"
+                        except Exception as ve:
+                            # m10: log the detail locally; never leak paths/URLs/keys
+                            # into the system prompt or the reply stream.
+                            print("[vision] describe_image failed: %s" % ve)
+                            vision_ctx += "【图片识别失败，已略过图片内容】\n"
+                else:
+                    ocr_texts = []
+                    for img in images[:3]:
+                        try:
+                            txt = plugin_ocr.recognize(img)
+                        except Exception as oe:
+                            print("[ocr] recognize failed: %s" % oe)
+                            txt = ""
+                        if txt.strip():
+                            ocr_texts.append(txt)
+                    if ocr_texts:
+                        ocr_text = "\n\n".join(ocr_texts)
+                        vision_ctx = plugin_ocr.build_context(ocr_text, message)
+                        print("[ocr] local OCR read %d image(s), %d chars"
+                              % (len(ocr_texts), sum(len(t) for t in ocr_texts)))
+                    elif plugin_ocr.available().get("ok"):
+                        vision_ctx = ("【用户发来一张图片】本机没有配置云端视觉模型，"
+                                      "本机 OCR 也没在图上读到文字（这可能不是文字截图，"
+                                      "或是纯画面）。看不清就先请用户用一两句话说说图上是什么。")
+                    else:
+                        vision_ctx = ("【用户发来一张图片】本机既没有配置云端视觉模型，"
+                                      "也没有可用的本地 OCR。请如实告诉用户现在看不了图，"
+                                      "并建议在设置里填一个视觉模型的 key。")
 
             # explicit "forget" command -> handled locally, streamed as a reply
             import re as _re
@@ -1223,7 +1251,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif _offline:
                     # ---- 离线无牌对话：不调模型，给不越界的引导 ----
                     emit({"offline": True})
-                    for piece in offline.chunks(offline.compose_chat(message)):
+                    for piece in offline.chunks(offline.compose_chat(message, image_note=ocr_text)):
                         full.append(piece)
                         emit({"token": piece})
                 else:
@@ -1333,7 +1361,7 @@ class Handler(BaseHTTPRequestHandler):
                         _emit_err({"token": piece})
                 else:
                     _emit_err({"offline": True, "fallback": "模型连接失败"})
-                    for piece in offline.chunks(offline.compose_chat(message)):
+                    for piece in offline.chunks(offline.compose_chat(message, image_note=ocr_text)):
                         _emit_err({"token": piece})
                 _emit_err({"done": True})
         elif p == "/api/memory":

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="/static/icon.svg">
 <link rel="stylesheet" href="/static/design-tokens.css?v=12">
 <link rel="stylesheet" href="/static/design-components.css?v=5">
-<link rel="stylesheet" href="/static/app.css?v=24">
+<link rel="stylesheet" href="/static/app.css?v=29">
 </head>
 <body>
 <div class="sky" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i><i class="l6"></i></div>
@@ -64,12 +64,12 @@
       <div class="composer">
         <div id="imgPreview" style="display:none"></div>
         <div class="composer-row">
-          <label class="img-btn" title="附图（需配置云端视觉模型）"><input id="imgInput" type="file" accept="image/*" multiple hidden><span class="sr-only">附图</span></label>
+          <label class="img-btn" title="附图（本机 OCR 或云端视觉模型读图）" data-zh-title="附图（本机 OCR 或云端视觉模型读图）"><input id="imgInput" type="file" accept="image/*" multiple hidden><span class="sr-only" data-i18n="附图">附图</span></label>
           <textarea id="input" rows="1" placeholder="说说你的心事…"></textarea>
           <button class="send" id="sendBtn">发送</button>
           <button class="send stop" id="stopBtn" hidden title="停止这一轮回复">停止</button>
         </div>
-        <div class="hint"><span><kbd>Enter</kbd> 发送 · <kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span><span>抽牌与牌义都在本地完成</span></div>
+        <div class="hint"><span><kbd>Enter</kbd> <span data-i18n="发送">发送</span> · <kbd>Shift</kbd>+<kbd>Enter</kbd> <span data-i18n="换行">换行</span></span><span data-i18n="抽牌与牌义都在本地完成">抽牌与牌义都在本地完成</span></div>
       </div>
     </div>
   </main>
@@ -117,7 +117,9 @@
       <div class="field"><label>temperature</label><input id="temp" type="number" step="0.1" value="0.8"></div>
       <div class="field"><label>超时（秒）</label><input id="timeout" type="number" value="120"></div>
     </div>
-    <label class="switch"><input type="checkbox" id="toolsEnabled"> 启用工具调用（检索/记忆/知识库/危机检查；抽牌是本地动作，不受此开关影响）</label>
+    <!-- 工具调用同样默认开启、不可关闭：隐藏的 checked+disabled 输入框兼容 collectConfig() -->
+    <input type="checkbox" id="toolsEnabled" checked disabled style="display:none">
+    <div class="switch switch-static" title="工具调用默认开启，不可关闭">🧰 工具调用（检索 / 记忆 / 知识库 / 危机检查；抽牌始终在本地）<span class="lock-tag">默认开启 · 不可关闭</span></div>
     <!-- 语气系统默认开启、不可关闭：保留隐藏的 checked+disabled 输入框以兼容 collectConfig()，UI 上只做说明 -->
     <input type="checkbox" id="toneEnabled" checked disabled style="display:none">
     <div class="switch switch-static" title="语气系统默认开启，不可关闭">💜 语气系统（奥莉薇娅的女性塔罗师口吻 + 自然非暴力沟通）<span class="lock-tag">默认开启 · 不可关闭</span></div>
@@ -126,9 +128,10 @@
     <p class="desc" style="margin:4px 0 12px;font-size:var(--fs-caption)">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
 
     <details style="margin:14px 0;border-top:1px solid var(--line);padding-top:12px">
-      <summary style="cursor:pointer;color:var(--accent-ink)">👁 视觉识别插件（云端 VLM，选填）</summary>
-      <p class="desc" style="margin:8px 0">纯文本模型也能"看图"：填一个云端视觉模型的 key，图片先转成文字描述再交给主模型。<b>不依赖本地模型</b>。密钥只存本机。</p>
-      <label class="switch"><input type="checkbox" id="visionEnabled"> 启用视觉识别</label>
+      <summary style="cursor:pointer;color:var(--accent-ink)">👁 看图：本机 OCR + 云端视觉（选填）</summary>
+      <p class="desc" style="margin:8px 0">纯文本模型也能"看图"。<b>默认就能读文字截图</b>：图先过本机 OCR，把上面的字读出来交给主模型，离线、不上传。画面类的内容（照片、构图、颜色）才需要下面这些云端视觉模型。</p>
+      <div class="status" id="ocrStatus"></div>
+      <label class="switch"><input type="checkbox" id="visionEnabled"> 启用云端视觉识别</label>
       <div class="field"><label>视觉 API 预设</label>
         <select id="visionPreset">
           <option value="custom">自定义（OpenAI 兼容）</option>
@@ -358,7 +361,7 @@
   </div>
 </div>
 
-<script src="/static/i18n.js?v=4"></script>
-<script src="/static/app.js?v=25"></script>
+<script src="/static/i18n.js?v=12"></script>
+<script src="/static/app.js?v=29"></script>
 </body>
 </html>

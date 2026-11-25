@@ -1,6 +1,10 @@
 const $ = id => document.getElementById(id);
 const chat = $('chat'), input = $('input');
 
+/* 界面语言：静态文案由 i18n.js 负责，这里是脚本自己拼出来的状态文字 */
+const langEn = () => (localStorage.getItem('olivia.lang') || 'zh').toLowerCase().indexOf('en') === 0;
+const uiText = (zh, en) => (langEn() ? en : zh);
+
 /* ---------- 弹层可访问性（M-6）：焦点管理 / Esc 关闭 / Tab 陷阱 / 背景禁滚 ---------- */
 let _lastFocused = null;
 const FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])';
@@ -136,6 +140,13 @@ function shelfTitle(hist){
   return t.length > 18 ? t.slice(0, 18) + '…' : t;
 }
 function persistSession(){
+  /* 空页不入册。连点「新对话」时每一页都是空的，若照存一遍，
+     会话簿很快被「未命名的一页 · 0 条」占满，真正的对话就被挤到下面去了。 */
+  const hasContent = history.some(m => m && String(m.content || '').trim());
+  if(!hasContent){
+    try { localStorage.setItem(SHELF_ACTIVE_KEY, sessionId); } catch(e){}
+    return;
+  }
   const shelf = loadShelf();
   let s = shelf.find(x => x.id === sessionId);
   if(!s){ s = { id: sessionId, title: '', history: [], updatedAt: Date.now() }; shelf.unshift(s); }
@@ -1152,7 +1163,7 @@ async function loadConfig(){
     const msg = (e && e.message) || String(e);
     const doc = $('docList'); if (doc) doc.textContent = msg;
     const st = $('testStatus'); if (st) { st.className = 'status err'; st.textContent = msg; }
-    const chip = $('backendChip'); if (chip) chip.textContent = '未连接';
+    const chip = $('backendChip'); if (chip) chip.textContent = uiText('未连接', 'Disconnected');
     return;
   }
   const c = d.config;
@@ -1166,7 +1177,7 @@ async function loadConfig(){
   $('apiKey').placeholder = c.api_key_set ? '已保存密钥（留空则不覆盖）' : 'sk-…';
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
-  $('toolsEnabled').checked = c.tools_enabled !== false;
+  $('toolsEnabled').checked = true; // 工具调用与语气一样恒定开启，配置里的 false 不再生效
   $('toneEnabled').checked = true; // 语气系统恒定开启，忽略配置里可能残留的 false
   $('prophecyEnabled').checked = c.prophecy_enabled === true;
   $('prophecyChip').classList.toggle('on', c.prophecy_enabled === true);
@@ -1181,7 +1192,8 @@ async function loadConfig(){
   try { localStorage.setItem('olivia.lang', lang); } catch(e){}
   if(window.OliviaI18n) window.OliviaI18n.apply(lang);
   $('presetNote').textContent = PRESET_NOTE[c.backend] || '';
-  $('backendChip').textContent = (c.backend||'?') + (c.api_key_set||c.backend==='ollama' ? ' · 就绪' : ' · 待填 key');
+  $('backendChip').textContent = (c.backend||'?') + (c.api_key_set||c.backend==='ollama'
+    ? uiText(' · 就绪', ' · ready') : uiText(' · 待填 key', ' · key needed'));
   $('docList').textContent = d.docs && d.docs.length ? d.docs.join('\n') : '（knowledge/ 目录还是空的）';
 }
 
@@ -1229,14 +1241,23 @@ function updateUsageChip(usage, budget){
   if(!usage) { chip.hidden = true; return; }
   const used = usage.total || 0;
   chip.hidden = false;
-  chip.textContent = budget ? ('今日 ' + used + ' / ' + budget) : ('今日 ' + used + ' tokens');
-  chip.title = '今日用量：入 ' + (usage.in||0) + ' / 出 ' + (usage.out||0) +
-    '，调用 ' + (usage.calls||0) + ' 次' + (budget ? ('；预算 ' + budget) : '');
+  const en = langEn();
+  chip.textContent = budget
+    ? (en ? ('Today ' + used + ' / ' + budget) : ('今日 ' + used + ' / ' + budget))
+    : (en ? ('Today ' + used + ' tokens') : ('今日 ' + used + ' tokens'));
+  chip.title = en
+    ? ('Today: in ' + (usage.in||0) + ' / out ' + (usage.out||0) + ', ' + (usage.calls||0) + ' calls' + (budget ? ('; budget ' + budget) : ''))
+    : ('今日用量：入 ' + (usage.in||0) + ' / 出 ' + (usage.out||0) +
+       '，调用 ' + (usage.calls||0) + ' 次' + (budget ? ('；预算 ' + budget) : ''));
   if(budget && used >= budget) chip.style.color = 'var(--err)';
   const st = $('usageStatus');
-  if(st) st.textContent = '今日：入 ' + (usage.in||0) + ' / 出 ' + (usage.out||0) +
-    '（合计 ' + used + '），调用 ' + (usage.calls||0) + ' 次' +
-    (budget ? ('；预算 ' + budget + '，超出后自动改用离线整理') : '；未设置预算');
+  if(st) st.textContent = en
+    ? ('Today: in ' + (usage.in||0) + ' / out ' + (usage.out||0) +
+       ' (total ' + used + '), ' + (usage.calls||0) + ' calls' +
+       (budget ? ('; budget ' + budget + ', offline digest after that') : '; no budget set'))
+    : ('今日：入 ' + (usage.in||0) + ' / 出 ' + (usage.out||0) +
+       '（合计 ' + used + '），调用 ' + (usage.calls||0) + ' 次' +
+       (budget ? ('；预算 ' + budget + '，超出后自动改用离线整理') : '；未设置预算'));
 }
 
 $('saveBtn').onclick = async () => {
@@ -1880,6 +1901,22 @@ async function loadKB(){
   const vc=d.vision&&d.vision.config||{};
   $('visionBase').value=vc.base_url||''; $('visionModel').value=vc.model||'';
   $('visionKey').placeholder=vc.api_key&&vc.api_key.indexOf('***')>=0?'已保存密钥（留空不覆盖）':'留空则不覆盖';
+  renderOcrStatus(d&&d.vision&&d.vision.ocr);
+}
+function renderOcrStatus(ocr){
+  const el=$('ocrStatus'); if(!el) return;
+  if(ocr&&ocr.ok){
+    const which = ocr.backend==='tesseract' ? 'Tesseract'
+      : uiText('Windows 自带识别器','Windows built-in OCR');
+    const langs = ocr.langs&&ocr.langs.length ? ' · '+ocr.langs.join(' / ') : '';
+    el.className='status ok';
+    el.textContent = uiText('本机 OCR 可用（','Local OCR ready (') + which + langs
+      + uiText('）：没配云端视觉模型时，图上的字也能读出来。','): text screenshots are readable without a vision model.');
+  } else {
+    el.className='status err';
+    el.textContent = uiText('本机没有找到可用的 OCR：未配云端视觉模型时读不了图。',
+      'No local OCR found: images need a vision model to be read.');
+  }
 }
 function renderKB(){
   const list=$('kbList'); list.innerHTML='';

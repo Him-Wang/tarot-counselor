@@ -102,10 +102,18 @@ def compose(result, question=""):
     return "\n".join(lines)
 
 
-def compose_chat(message=""):
-    """没有已抽的牌、也没连上模型时，给一句不越界的引导。"""
+def compose_chat(message="", image_note=""):
+    """没有已抽的牌、也没连上模型时，给一句不越界的引导。
+
+    image_note：本机 OCR 从图上读到的字。有就先把字念给用户听，
+    让他知道图确实被读到了，再说明离线状态下能做什么。
+    """
+    head = ""
+    if str(image_note or "").strip():
+        head = ("【我先把图上的字读出来了】\n" + str(image_note).strip()[:1200] +
+                "\n\n（这些字是本机 OCR 读的，可能有错字；看得对不对，你可以直接改。）\n\n")
     return (
-        _NOTICE + "\n\n"
+        head + _NOTICE + "\n\n"
         "不过抽牌和读牌面都不需要联网。你可以说「用三张牌阵抽牌」，"
         "或点选一个牌阵；我会把牌按传统几何摆好，并把每个牌位在问什么、"
         "每张牌的传统牌意完整整理给你。等连上模型后，再就着这副牌为你解读。"
