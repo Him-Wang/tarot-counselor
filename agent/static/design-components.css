@@ -35,16 +35,15 @@
 .btn:active{transform:translateY(1px)}
 .btn .icon{width:14px;height:14px}
 
-/* 主按钮：金属渐变 + 上缘一道高光，不用纯色块 */
+/* 主按钮：哑光铜金 + 上缘一道受光边，不用纯色块也不拉大跨度渐变 */
 .btn--gold{
-  border:1px solid rgba(255,255,255,.16);border-radius:999px;
-  background:var(--gold-grad);color:#1A1408;font-weight:600;letter-spacing:.14em;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 10px 24px -18px rgba(201,168,106,.7);
+  border:1px solid rgba(0,0,0,.24);border-radius:999px;
+  background:var(--gold-fill);color:var(--gold-ink);font-weight:600;letter-spacing:.1em;
+  box-shadow:var(--edge-brass), 0 8px 20px -16px rgba(0,0,0,.9);
 }
 .btn--gold:hover{
-  color:#1A1408;background:var(--gold-grad);border-color:rgba(255,255,255,.2);
-  filter:brightness(1.05);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.48), 0 14px 30px -18px rgba(201,168,106,.85);
+  color:var(--gold-ink);background:var(--gold-fill-hi);border-color:rgba(0,0,0,.28);
+  box-shadow:var(--edge-brass), 0 12px 26px -16px rgba(0,0,0,.95);
 }
 
 .btn--quiet{border-color:transparent;color:var(--muted)}

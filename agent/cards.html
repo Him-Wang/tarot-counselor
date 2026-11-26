@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="dsh-design" content="web">
 <title>Olivia · 牌义</title>
-<link rel="stylesheet" href="/static/design-tokens.css?v=12">
-<link rel="stylesheet" href="/static/design-components.css?v=5">
+<link rel="stylesheet" href="/static/design-tokens.css?v=15">
+<link rel="stylesheet" href="/static/design-components.css?v=6">
 <style>
 /* ============================================================
    Olivia · 牌义
@@ -48,15 +48,16 @@ body{min-height:100vh;padding-left:258px}
 .newbtn{
   display:flex;align-items:center;justify-content:center;gap:5px;
   width:100%;min-height:38px;border-radius:999px;
-  background:var(--gold-grad);color:#191307;
-  font-size:var(--fs-13);font-weight:600;letter-spacing:.18em;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.44),0 12px 28px -18px rgba(201,168,106,.65);
-  transition:filter .2s var(--ease-out),box-shadow .2s var(--ease-out);
+  border:1px solid rgba(0,0,0,.24);
+  background:var(--gold-fill);color:var(--gold-ink);
+  font-size:var(--fs-13);font-weight:600;letter-spacing:.12em;
+  box-shadow:var(--edge-brass),0 10px 22px -18px rgba(0,0,0,.9);
+  transition:background .2s var(--ease-out),box-shadow .2s var(--ease-out);
 }
 .newbtn::before{content:"＋";font-size:15px;line-height:1;letter-spacing:0}
 .newbtn:hover{
-  filter:brightness(1.05);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 16px 34px -16px rgba(201,168,106,.8);
+  background:var(--gold-fill-hi);
+  box-shadow:var(--edge-brass),0 14px 26px -18px rgba(0,0,0,.95);
 }
 .rail-nav{display:flex;flex-direction:column;gap:2px;margin-top:26px}
 .rail-nav a{
