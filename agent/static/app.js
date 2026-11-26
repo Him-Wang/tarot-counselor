@@ -1341,13 +1341,29 @@ async function send(textOverride){
   async function runTyper(){
     // 先让光标单独闪一下再落第一个字：短句也能看出是在「打」。
     await sleep(reduceMotion ? 60 : 180);
+    // 逐字写进一个文本节点，而不是每字重设 textContent：
+    // 后者每次都重建节点、强制重排，长回复会明显掉帧。
+    const node = document.createTextNode('');
+    bub.textContent = '';
+    bub.appendChild(node);
+    // 滚动也按帧合并；用户自己往上翻时就不抢了，否则长回复会一直跟人较劲。
+    let queued = false;
+    const stick = () => {
+      if(queued) return;
+      if(chat.scrollHeight - chat.scrollTop - chat.clientHeight > 240) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        chat.scrollTop = chat.scrollHeight;
+      });
+    };
     while(pending.length){
-      if(stopped){ typed += pending; pending=''; bub.textContent=typed; break; }
+      if(stopped){ typed += pending; pending=''; node.nodeValue = typed; break; }
       const back = pending.length;
       const ch = pending.slice(0,1); pending = pending.slice(1);
       typed += ch;
-      bub.textContent = typed;
-      chat.scrollTop = chat.scrollHeight;
+      node.nodeValue = typed;
+      stick();
       let d;
       if(reduceMotion){ d = 9; }
       else {
@@ -1360,6 +1376,7 @@ async function send(textOverride){
     }
     typing = false;
     if(!pending.length) bub.classList.remove('typewriting');
+    stick();
   }
   async function drain(){
     while(typing || pending.length){ await sleep(40); }

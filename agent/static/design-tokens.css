@@ -145,11 +145,11 @@ ul,ol{margin:0;padding:0;list-style:none}
 /* ---------- 繁星层（全站共用：主界面 / 牌义 / 关怀） ---------- */
 /* 六层不同密度、不同呼吸节奏交错，让每颗星看起来是自己闪的，
    而不是整片天空一起明暗。瓦片尺寸互质，避免看出重复。 */
-.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;contain:paint}
 .sky i{
-  position:absolute;inset:-32%;transform-origin:50% 50%;
+  position:absolute;inset:0;transform-origin:50% 50%;
   display:block;background-repeat:repeat;
-  will-change:opacity,rotate;
+  /* 不给 will-change：6 层常驻合成层很吃显存，让浏览器按动画自己提升就够了 */
 }
 .sky .l1{
   background-size:421px 421px;
@@ -303,14 +303,26 @@ ul,ol{margin:0;padding:0;list-style:none}
   46%{opacity:.86}
 }
 /* 缓慢自转：整片天在转，各层速度不同才有厚度——
-   近处（细尘多、瓦片小）转得快一点，远处（大瓦片）几乎不动。 */
+   近处（细尘多、瓦片小）转得快一点，远处（大瓦片）几乎不动。
+   性能：只有稀疏的光晕层（l5/l6）真的在转，四层密集星点只做明暗闪烁——
+   旋转会让合成器每帧重采样那一大片平铺渐变，密集层转起来最吃显卡。 */
 @keyframes skySpin{to{rotate:360deg}}
-.sky .l1{animation:twinkleA 5.4s ease-in-out -0.7s infinite, skySpin 300s linear infinite}
-.sky .l2{animation:twinkleB 7.2s ease-in-out -2.9s infinite, skySpin 520s linear infinite -40s}
-.sky .l3{animation:twinkleA 6.1s ease-in-out -1.6s infinite, skySpin 380s linear infinite -90s}
-.sky .l4{animation:twinkleB 8.6s ease-in-out -4.3s infinite, skySpin 640s linear infinite -150s}
-.sky .l5{animation:twinkleA 5.9s ease-in-out -2.1s infinite, skySpin 760s linear infinite -60s}
-.sky .l6{animation:twinkleC 12.5s ease-in-out -5.4s infinite, skySpin 980s linear infinite -210s}
+.sky .l1{animation:twinkleA 5.4s ease-in-out -0.7s infinite}
+.sky .l2{animation:twinkleB 7.2s ease-in-out -2.9s infinite}
+.sky .l3{animation:twinkleA 6.1s ease-in-out -1.6s infinite}
+.sky .l4{animation:twinkleB 8.6s ease-in-out -4.3s infinite}
+.sky .l5{
+  inset:-32%;
+  animation:twinkleA 5.9s ease-in-out -2.1s infinite, skySpin 760s linear infinite -60s;
+}
+.sky .l6{
+  inset:-32%;
+  animation:twinkleC 12.5s ease-in-out -5.4s infinite, skySpin 980s linear infinite -210s;
+}
+/* 小屏上少挂两层，省一半填充率（手机 GPU 最怕这种全屏叠层） */
+@media (max-width:720px){
+  .sky .l2,.sky .l4{display:none}
+}
 /* 这里的闪烁与自转是用户点名要的效果，且幅度极小（最慢一层 980 秒转一圈、
    亮度只在 .2–1 之间起伏），所以不跟随 prefers-reduced-motion 关闭；
    其它装饰动效（牌面漂浮、消息入场）仍然在 app.css 里照常关闭。 */
@@ -334,7 +346,8 @@ ul,ol{margin:0;padding:0;list-style:none}
 }
 body::after{
   content:"";position:fixed;inset:0;z-index:3;pointer-events:none;
-  opacity:.055;mix-blend-mode:overlay;
+  opacity:.045;
+  /* 不用 mix-blend-mode：全屏混合模式会让每次滚动都重算整屏，卡顿主要来源之一 */
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
   background-size:140px 140px;
 }
