@@ -109,8 +109,8 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "draw_cards",
-            "description": "保留工具：抽牌正常由系统在本地完成，不要主动调用本工具；"
-                           "仅在系统把牌面交给你解读时使用，不要自己生成牌名。",
+            "description": "保留工具：抽牌正常由系统在本地完成（手选或一键真随机），"
+                           "不要主动调用本工具；仅在系统把牌面交给你解读时使用，不要自己生成牌名。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -122,10 +122,6 @@ TOOLS = [
                     "question": {
                         "type": "string",
                         "description": "来访者所问的问题，原样或简要转述",
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "description": "可选：复现同一副牌用的随机数种子。一般情况下留空，由系统客观随机生成。",
                     },
                 },
                 "required": ["spread"],
@@ -357,29 +353,20 @@ def _new_seed():
 
 
 def draw_cards(spread="三张", question="", seed=None, picks=None):
-    """抽牌：默认客观随机；传入 picks 时改为来访者亲手挑出的牌。
+    """手动选牌落位：只接受来访者亲手挑出的牌，不再自行随机抽牌。
+
+    需要「一键真随机」请用 draw_cards_random()（OS 内核熵，每次不同、不可复现）。
 
     ``picks`` 是牌堆下标（0..77）的列表，按顺序落到牌阵的各个牌位。
-    手动选牌时不重抽、不替换，只把选中的牌原样铺开；正逆位仍由 seed 决定。
-    ``seed`` 只影响正逆位的产生：给同一个 seed（同一牌阵）会得到同一组正逆位。
-    不指定 seed 时由系统熵（os.urandom）生成一个 53 位种子，
-    再用 HMAC-SHA256 比特流（CSPRNG）采样，而不是可反推的 MT19937。
+    手动选牌时不重抽、不替换，只把选中的牌原样铺开；正逆位由 seed 决定。
+    ``seed`` 只影响正逆位的产生：给同一个 seed（同一牌阵、同一组 picks）会得到
+    同一组正逆位，用于审计 / 回访。不指定 seed 时由系统熵生成 53 位种子。
     """
     spread = spread if spread in SPREADS else "三张"
     meta = spreads_mod.SPREAD_META.get(spread) or {}
     pos_pairs = meta.get("positions") or [(p, "") for p in SPREADS[spread]]
-    # 每次抽牌都落一个 seed，用户据此可重放同一组正逆位。
-    if seed is None:
-        seed = _new_seed()
-    try:
-        seed = int(seed)
-    except (TypeError, ValueError):
-        seed = _new_seed()
-    rng = _SeedStream(seed)
-    # Sample WITHOUT replacement from the canonical 78-card deck: the same
-    # card cannot appear twice in one spread (standard tarot rule).
     want = len(pos_pairs)
-    manual = False
+    # 严格校验手选的牌：不够就报错，绝不再退回随机采样。
     clean = []
     if isinstance(picks, (list, tuple)):
         for v in picks:
@@ -389,12 +376,19 @@ def draw_cards(spread="三张", question="", seed=None, picks=None):
                 continue
             if 0 <= idx < len(DECK) and idx not in clean:
                 clean.append(idx)
-    if len(clean) >= want:
-        # 来访者手选的牌：顺序即牌位顺序，不再经过随机采样。
-        indices = clean[:want]
-        manual = True
-    else:
-        indices = rng.sample(range(78), want)
+    if len(clean) != want:
+        return {"ok": False,
+                "reason": "手选需要 %d 张不重复的牌，实际只有 %d 张；"
+                          "随机抽牌请使用 draw_cards_random()。" % (want, len(clean))}
+
+    if seed is None:
+        seed = _new_seed()
+    try:
+        seed = int(seed)
+    except (TypeError, ValueError):
+        seed = _new_seed()
+    rng = _SeedStream(seed)
+    indices = clean[:want]
     cards = []
     for (pos, pos_meaning), idx in zip(pos_pairs, indices):
         name = DECK[idx]
@@ -416,14 +410,56 @@ def draw_cards(spread="三张", question="", seed=None, picks=None):
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
         "seed": seed,
-        "manual": manual,
+        "manual": True,
         "layout": spreads_mod.layout(spread),
         "cards": cards,
         "note": ("牌面由来访者亲手从牌堆中挑出，按挑选顺序落到牌位；不得更换、补牌或主观挑选。"
-                 if manual else
-                 "牌面由工具客观随机产生，抽到什么解什么；不得更换、补牌或主观挑选。")
-                + "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
-                  "不要自行编造牌意，也不要把其他牌位的含义套到这里。",
+                 "请依据每张牌随附的传统牌意（核心/正位/逆位）与该牌位在问什么来解读，"
+                 "不要自行编造牌意，也不要把其他牌位的含义套到这里。"),
+    }
+
+
+def draw_cards_random(spread="三张", question=""):
+    """一键真随机抽牌：每次都从操作系统内核熵重新采样，不可预测、不可复现。
+
+    与 draw_cards(seed=...) 的区别：
+      - draw_cards 是「同 seed 同牌」的可复现流，用于审计 / 回放 / 手选正逆位；
+      - 本函数走 random.SystemRandom()（底层 os.urandom，混入硬件熵），
+        每次调用都取新熵，结果不同、无法重放，也不输出可用于重放的 seed。
+
+    不放回、正逆位各半、传统牌意随牌返回，规则与手选模式一致。
+    """
+    spread = spread if spread in SPREADS else "三张"
+    meta = spreads_mod.SPREAD_META.get(spread) or {}
+    pos_pairs = meta.get("positions") or [(p, "") for p in SPREADS[spread]]
+    want = len(pos_pairs)
+    rng = random.SystemRandom()          # 内核 CSPRNG，每次取新熵，不可复现
+    indices = rng.sample(range(len(DECK)), want)
+    cards = []
+    for (pos, pos_meaning), idx in zip(pos_pairs, indices):
+        name = DECK[idx]
+        orientation = "逆位" if rng.getrandbits(1) else "正位"
+        cards.append({
+            "position": pos,
+            "position_meaning": pos_meaning,
+            "name": name,
+            "orientation": orientation,
+            "image": card_image(name),
+            "meaning": knowledge.get_card_meaning(name, orientation),
+        })
+    return {
+        "ok": True,
+        "spread": spread,
+        "spread_desc": meta.get("desc", ""),
+        "question": question or "（来访者未明确说明）",
+        "seed": None,
+        "manual": False,
+        "random_source": "os.urandom / SystemRandom (CSPRNG，不可复现)",
+        "layout": spreads_mod.layout(spread),
+        "cards": cards,
+        "note": ("牌面由操作系统内核熵真随机产生：每次都不同、无法复现、不经过任何 seed。"
+                 "不放回，正逆位各半。请依据每张牌随附的传统牌意与该牌位在问什么来解读，"
+                 "不要自行编造或替换牌意。"),
     }
 
 
@@ -640,7 +676,7 @@ def schedule_reminder(name="", intent="", kind="once", run_at="",
 
 
 EXECUTORS = {
-    "draw_cards": lambda a: draw_cards(a.get("spread", "三张"), a.get("question", ""), a.get("seed")),
+    "draw_cards": lambda a: draw_cards_random(a.get("spread", "三张"), a.get("question", "")),
     "search_knowledge": lambda a: search_knowledge(a.get("query", "")),
     "save_memory": lambda a: save_memory(a.get("kind", "fact"), a.get("text", "")),
     "crisis_check": lambda a: crisis_check(a.get("text", "")),
@@ -676,9 +712,11 @@ def summary(name, result):
         more = "…" if len(result["cards"]) > 3 else ""
         total = len(result.get("cards") or [])
         seed = result.get("seed")
-        seed_txt = " · 种子 %s" % seed if seed is not None else ""
+        src = result.get("random_source")
+        tag = (" · 真随机" if src else
+               (" · 种子 %s" % seed if seed is not None else ""))
         return "抽牌：%s · %d 张（%s）%s%s" % (
-            result["spread"], total, cards, more, seed_txt)
+            result["spread"], total, cards, more, tag)
     if name == "search_knowledge":
         return "检索资料：%s" % ("、".join(result.get("docs") or []) or "无匹配")
     if name == "save_memory":

@@ -767,6 +767,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
 
+        elif p == "/api/random-draw":
+            # ---- 一键真随机抽牌：走 OS 内核熵（SystemRandom），每次都不同 ----
+            # 不产生、不暴露可复现 seed；与手选 /api/pick 是两条完全独立的路径。
+            sid = str(body.get("session_id") or "default")
+            spread = str(body.get("spread") or "")
+            if spread and spread not in spreads_mod.SPREADS:
+                self._send_json({"ok": False, "error": "未知牌阵：%s" % spread}, 400)
+                return
+            spread = spread or "三张"
+            result = tools.draw_cards_random(spread=spread,
+                                             question=str(body.get("question") or ""))
+            _pending_draws[sid] = {"result": result, "at": time.time()}
+            if demo_mode.should_persist():
+                try:
+                    memory.record_draw(result, "")
+                except Exception as e:
+                    print("[random-draw] record draw failed: %s" % e)
+            self._send_json({
+                "ok": True,
+                "cards": _cards_payload(result),
+                "ask": ASK_AFTER_DRAW,
+            })
+
         elif p == "/api/pick":
             # ---- 手动选牌落位：来访者挑好的牌按顺序铺进牌位 ----
             # 选牌是本地动作，不调用模型；落位后进入正常的「提问 → 解读」两阶段。
@@ -920,16 +943,17 @@ class Handler(BaseHTTPRequestHandler):
             spread_list_reply = None
             spread_choices = None
             # 来访者的界面默认自己点牌：点名牌阵后先进选牌舞台，
-            # 由 /api/pick 把他亲手挑出的牌铺进牌位；不带 pick 的调用仍自动抽。
+            # 由 /api/pick 把他亲手挑出的牌铺进牌位；不带 pick 的调用走真随机一键抽。
             want_pick = bool(body.get("pick"))
             if two_phase and preset_reply is None:
-                # 明确点名牌阵 -> 直接抽；只说「抽牌」-> 先列牌阵让他点按钮。
+                # 明确点名牌阵 -> 抽牌；只说「抽牌」-> 先列牌阵让他点按钮。
                 if asks_draw and _named_spread(message):
                     picked_spread = _pick_spread(message)
                     if want_pick:
                         pick_data = _pick_payload(picked_spread)
                     else:
-                        local_draw = tools.draw_cards(spread=picked_spread)
+                        # 缺省（非手选）路径一律走内核熵真随机，不产生可复现 seed。
+                        local_draw = tools.draw_cards_random(spread=picked_spread)
                 elif asks_draw:
                     spread_list_reply = _spread_choice_reply()
                     spread_choices = _spread_choices()

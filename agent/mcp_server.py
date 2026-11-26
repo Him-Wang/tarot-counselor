@@ -49,14 +49,14 @@ WRITE_ALLOWLIST = (
 TOOLS = [
     {
         "name": "draw_cards",
-        "description": "按传统牌阵本地随机抽牌（不放回，可复现）。返回牌位、正逆位、"
-                       "传统牌意与布局坐标。抽牌不调用任何模型。",
+        "description": "一键真随机抽牌：用操作系统内核熵（os.urandom）从传统牌阵抽牌，"
+                       "不放回、每次都不同、不可复现。返回牌位、正逆位、传统牌意与布局坐标。"
+                       "抽牌不调用任何模型，也不产生可重放的种子。",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "spread": {"type": "string", "description": "牌阵名，如 单张 / 三张 / 凯尔特十字"},
                 "question": {"type": "string", "description": "这次想问的问题（可留空）"},
-                "seed": {"type": "integer", "description": "复现种子；同一个种子抽出同一副牌"},
             },
         },
     },
@@ -191,13 +191,9 @@ def _text_result(payload, is_error=False):
 def call_tool(name, arguments):
     args = arguments or {}
     if name == "draw_cards":
-        seed = args.get("seed")
-        try:
-            seed = int(seed) if seed not in (None, "") else None
-        except (TypeError, ValueError):
-            seed = None
-        return tools.draw_cards(str(args.get("spread") or "三张"),
-                                str(args.get("question") or ""), seed=seed)
+        # 一键真随机：每次从 OS 内核熵重新采样，不接 seed、不可复现。
+        return tools.draw_cards_random(str(args.get("spread") or "三张"),
+                                       str(args.get("question") or ""))
     if name == "lookup_card":
         return tools.lookup_card(str(args.get("name") or ""),
                                  str(args.get("orientation") or "两者"))

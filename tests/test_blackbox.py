@@ -191,6 +191,26 @@ try:
         names = [c.get("name") for c in items]
         check("抽牌不放回", len(names) == len(set(names)), str(names))
     check("抽牌轮不触发安全闸门", not [e for e in evs4 if "safety" in e])
+    check("chat 抽牌是真随机（无 seed、标记 random）",
+          all_cards and all_cards[-1].get("seed") is None and all_cards[-1].get("random") is True)
+
+    # ---------------------------------------------------- 一键真随机端点黑盒
+    status, raw = http_post_json("/api/random-draw", {
+        "session_id": "bb-rand", "spread": "三张",
+    })
+    rand = json.loads(raw.decode("utf-8"))
+    check("随机抽牌端点成功", rand.get("ok"), str(rand)[:200])
+    rand_items = (rand.get("cards") or {}).get("items") or []
+    check("随机抽牌出 3 张", len(rand_items) == 3, str(len(rand_items)))
+    check("随机抽牌无 seed（不可复现）", (rand.get("cards") or {}).get("seed") is None)
+    check("随机抽牌标记 random", (rand.get("cards") or {}).get("random") is True)
+    status, raw2 = http_post_json("/api/random-draw", {
+        "session_id": "bb-rand", "spread": "三张",
+    })
+    rand2 = json.loads(raw2.decode("utf-8"))
+    check("两次随机抽牌结果不同",
+          [c.get("name") for c in rand_items] !=
+          [c.get("name") for c in (rand2.get("cards") or {}).get("items") or []])
 
     # ---------------------------------------------------- 手动选牌黑盒
     # 界面带 pick:true：先给牌阵舞台（不发牌），挑满后 /api/pick 落位，
@@ -234,7 +254,8 @@ try:
 
     # ------------------------------------------- 离线整理降级（无 key）
     # 接续 bb-draw 的那副牌给出问题：解读轮应走离线整理，不发牌不调模型，
-    # 明确标注 offline，正文带传统牌意/牌位/复现种子，且不伪装成 AI 解读。
+    # 明确标注 offline，正文带传统牌意/牌位，且不伪装成 AI 解读。
+    # bb-draw 走一键真随机路径，离线整理应标注真随机、无种子。
     status, evs_off = post_chat("就着这副牌说说我的工作", session="bb-draw")
     off_flags = [e for e in evs_off if e.get("offline")]
     off_tokens = "".join(e.get("token", "") for e in evs_off if "token" in e)
@@ -243,7 +264,8 @@ try:
           "tokens=%r" % off_tokens[:120])
     check("离线整理含传统牌意", "传统牌意" in off_tokens)
     check("离线整理不伪装 AI", "不是 AI 解读" in off_tokens)
-    check("离线整理含复现种子", "复现种子" in off_tokens)
+    check("离线整理标注真随机、无种子",
+          "系统真随机" in off_tokens and "无种子" in off_tokens)
     check("离线流正常结束", any(e.get("done") for e in evs_off))
 
     # 无牌的普通对话也应给离线引导，不出现死胡同文案

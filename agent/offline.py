@@ -96,8 +96,10 @@ def compose(result, question=""):
         lines.append("")
 
     seed = result.get("seed")
-    if seed is not None:
-        lines.append("复现种子：%s（同种子、同牌阵可抽回同一副牌）" % seed)
+    if result.get("random_source"):
+        lines.append("抽牌方式：系统真随机（OS 内核熵）· 每次都不同、不可复现、无种子")
+    elif seed is not None:
+        lines.append("审计种子：%s（同种子 + 同几张牌可复现同一组正逆位）" % seed)
     lines.append(_TAIL)
     return "\n".join(lines)
 

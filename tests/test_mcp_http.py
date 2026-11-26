@@ -110,6 +110,9 @@ try:
     check("tools/call 返回 3 张牌",
           payload.get("ok") is True and len(payload.get("cards", [])) == 3,
           repr(payload)[:200])
+    check("tools/call 抽牌是真随机（无 seed）",
+          payload.get("seed") is None and bool(payload.get("random_source")),
+          repr(payload)[:200])
 
     status, headers, body = post(
         {"jsonrpc": "2.0", "id": 4, "method": "tools/call",

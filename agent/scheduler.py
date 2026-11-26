@@ -346,13 +346,14 @@ def _fire_toast(title, body):
 
 
 def daily_card_message():
-    """每日一牌：本地客观抽一张，写成一条可读的晨间消息。
+    """每日一牌：用内核熵真随机抽一张，写成一条可读的晨间消息。
 
     不调用模型，所以没有 key / 模型不可用时也照常送达。
+    走 SystemRandom（os.urandom），每次都不同、不可复现，也不输出 seed。
     """
     try:
         import tools as tools_mod
-        res = tools_mod.draw_cards(spread="单张")
+        res = tools_mod.draw_cards_random(spread="单张")
         c = (res.get("cards") or [{}])[0]
         name = c.get("name", "")
         ori = c.get("orientation", "")

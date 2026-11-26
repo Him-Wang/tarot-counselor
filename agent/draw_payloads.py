@@ -14,6 +14,7 @@ def _cards_payload(result):
         "question": result.get("question", ""),
         "seed": result.get("seed"),
         "manual": bool(result.get("manual")),
+        "random": bool(result.get("random_source")),
         "layout": result.get("layout") or spreads_mod.layout(spread),
         "items": [{
             "position": c.get("position", ""),

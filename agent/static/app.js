@@ -754,7 +754,7 @@ function renderCards(inner, bub, data, opts){
   const head = document.createElement('div');
   head.className = 'draw-head';
   head.innerHTML = '<b>' + escHtml(data.spread || '抽牌') + '</b>　' + items.length + ' 张' +
-    (data.manual ? ' · 手选' : '') +
+    (data.manual ? ' · 手选' : (data.random ? ' · 真随机' : '')) +
     (data.spread_desc ? '　<span>' + escHtml(data.spread_desc) + '</span>' : '');
   wrap.appendChild(head);
 
@@ -874,6 +874,7 @@ function renderPickStage(inner, bub, data){
         '<button type="button" class="pick-nav next" aria-label="往后翻牌堆">›</button>' +
       '</div>' +
       '<div class="pick-foot"><span class="pick-hint"></span>' +
+        '<button type="button" class="pick-random" title="不自己挑，由操作系统真随机抽牌（每次都不同、不可复现）">🎲 一键真随机</button>' +
         '<button type="button" class="pick-reset">重选</button></div>';
 
     const slots = wrap.querySelector('.pick-slots');
@@ -894,13 +895,41 @@ function renderPickStage(inner, bub, data){
       return s;
     });
 
-    // 78 张牌一律牌背朝上：选哪一张由来访者自己决定
-    for(let i = 0; i < 78; i++){
+    // 78 张牌一律牌背朝上：选哪一张由来访者自己决定。
+    // 展示顺序每次用 crypto.getRandomValues 重新洗牌（拒绝采样，无取模偏差）；
+    // 按钮在 DOM 里的位置是展示位，dataset.i 仍映射到服务端 78 张牌的真实下标，
+    // 因此「展示洗牌」只改观感，不改变 /api/pick 的 picks 语义。
+    function secureRandomInt(maxExclusive){
+      // 用拒绝采样避免 modulo bias：丢弃 >= floor(2^32/max)*max 的样本。
+      const range = 0x100000000;
+      const limit = range - (range % maxExclusive);
+      const buf = new Uint32Array(1);
+      const cryptoObj = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+        ? crypto : null;
+      let v;
+      do{
+        if(cryptoObj) cryptoObj.getRandomValues(buf);
+        else buf[0] = Math.floor(Math.random() * range); // 仅极旧环境回退
+        v = buf[0];
+      }while(v >= limit);
+      return v % maxExclusive;
+    }
+    function shuffledDeck(){
+      const arr = Array.from({length:78}, (_, i) => i);
+      for(let i = arr.length - 1; i > 0; i--){
+        const j = secureRandomInt(i + 1);
+        const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+      }
+      return arr;
+    }
+    let displayOrder = shuffledDeck();
+    for(let d = 0; d < 78; d++){
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'pick-card';
-      b.dataset.i = String(i);
-      b.setAttribute('aria-label', '牌堆第 ' + (i + 1) + ' 张（牌背）');
+      b.dataset.i = String(displayOrder[d]);   // 真实牌下标（乱序映射）
+      b.dataset.slot = String(d);              // 展示位（洗牌后的顺序）
+      b.setAttribute('aria-label', '牌堆第 ' + (d + 1) + ' 张（牌背），轻点抽出');
       b.innerHTML = '<span class="pc-glyph">✦</span>';
       fan.appendChild(b);
     }
@@ -941,15 +970,36 @@ function renderPickStage(inner, bub, data){
       });
     }
 
+    function flyToSlot(card, s){
+      // 借鉴参考仓库 deck-ring 的 flyToSlot：克隆一张牌背，从点击位置飞到牌位。
+      if(!s || !card.getBoundingClientRect || typeof card.animate !== 'function') return;
+      const from = card.getBoundingClientRect();
+      const to = s.getBoundingClientRect();
+      const ghost = document.createElement('div');
+      ghost.className = 'pick-fly-ghost';
+      ghost.innerHTML = '<span class="pc-glyph">✦</span>';
+      ghost.style.left = (from.left + from.width / 2) + 'px';
+      ghost.style.top = (from.top + from.height / 2) + 'px';
+      document.body.appendChild(ghost);
+      const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+      const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+      const anim = ghost.animate([
+        {transform: 'translate(-50%,-50%) scale(1)', opacity: 1},
+        {transform: 'translate(-50%,-50%) translate(' + dx + 'px,' + dy + 'px) scale(0.42)', opacity: 0.85}
+      ], {duration: 420, easing: 'cubic-bezier(.2,.7,.3,1)'});
+      anim.onfinish = () => ghost.remove();
+    }
+
     function pick(card){
       if(submitting || card.disabled) return;
       const idx = Number(card.dataset.i);
       if(picked.indexOf(idx) >= 0) return;
+      const s = slotEls[picked.length];
+      flyToSlot(card, s);            // 飞入动画（在隐藏卡牌之前取位置）
       picked.push(idx);
       card.classList.add('picked');
       card.disabled = true;
       card.style.visibility = 'hidden';
-      const s = slotEls[picked.length - 1];
       if(s){
         s.classList.add('filled');
         const mini = s.querySelector('.pick-mini');
@@ -980,6 +1030,32 @@ function renderPickStage(inner, bub, data){
         wrap.classList.remove('is-submitting');
         hint.textContent = '落牌失败：' + ((err && err.message) || err) + ' · 点「重选」再来一次';
       }
+    }
+
+    // 重新洗牌：换一组展示顺序（真实牌下标映射也跟着重排），并重置已选的牌。
+    function reshuffle(){
+      if(submitting) return;
+      picked.length = 0;
+      displayOrder = shuffledDeck();
+      cards.forEach((c, d) => {
+        c.dataset.i = String(displayOrder[d]);
+        c.dataset.slot = String(d);
+        c.classList.remove('picked');
+        c.disabled = false;
+        c.style.visibility = 'visible';
+        c.style.pointerEvents = 'auto';
+      });
+      slotEls.forEach(s => {
+        s.classList.remove('filled');
+        const mini = s.querySelector('.pick-mini');
+        if(mini) mini.hidden = true;
+      });
+      pos = 0;
+      updateHint();
+      layout();
+      fan.classList.remove('just-shuffled');
+      void fan.offsetWidth;            // 触发重排以便重放动画
+      fan.classList.add('just-shuffled');
     }
 
     function reset(){
@@ -1036,11 +1112,44 @@ function renderPickStage(inner, bub, data){
     }
     wrap.querySelector('.pick-nav.prev').onclick = () => page(-1);
     wrap.querySelector('.pick-nav.next').onclick = () => page(1);
-    resetBtn.onclick = reset;
+    resetBtn.onclick = reshuffle;    // 「重选」同时重新洗牌，避免固定顺序
     fan.addEventListener('keydown', e => {
       if(e.key === 'ArrowLeft'){ page(-1); e.preventDefault(); }
       else if(e.key === 'ArrowRight'){ page(1); e.preventDefault(); }
+      else if(e.key === 'Home'){ pos = 0; layout(); e.preventDefault(); }
+      else if(e.key === 'End'){ pos = cards.length - vis; layout(); e.preventDefault(); }
+      else if(e.key === 'Enter'){
+        // 选中当前正中（离视口中心最近）的一张可见牌
+        const center = cards[Math.round(pos + (vis - 1) / 2)];
+        if(center && !center.classList.contains('picked') && center.style.visibility !== 'hidden'){
+          pick(center);
+        }
+        e.preventDefault();
+      }
     });
+
+    // 一键真随机：不自己挑，由服务端用 OS 内核熵抽牌（每次不同、不可复现）。
+    wrap.querySelector('.pick-random').onclick = async () => {
+      if(submitting) return;
+      submitting = true;
+      wrap.classList.add('is-submitting');
+      hint.textContent = '正在用系统真随机抽牌…';
+      try{
+        const r = await fetch('/api/random-draw', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({session_id: sessionId, spread: spread})
+        });
+        const d = await r.json();
+        if(!d || !d.ok) throw new Error((d && d.error) || '随机抽牌失败');
+        window.removeEventListener('resize', onResize);
+        wrap.remove();
+        resolve({cards: d.cards, ask: d.ask || ''});
+      }catch(err){
+        submitting = false;
+        wrap.classList.remove('is-submitting');
+        hint.textContent = '随机抽牌失败：' + ((err && err.message) || err);
+      }
+    };
 
     function onResize(){
       if(!wrap.isConnected){ window.removeEventListener('resize', onResize); return; }
@@ -1133,13 +1242,16 @@ function renderBoard(data){
           (extras.length ? ' + 补 ' + extras.length : '') +
         '</div></div>' +
       (data.manual
-        ? '<p class="b-seed">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出</p>'
-        : (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : '')) +
+        ? '<p class="b-seed">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出（正逆位可用种子复现）</p>'
+        : (data.random
+          ? '<p class="b-seed">系统真随机（OS 内核熵）· 每次都不同、不可复现、无种子</p>'
+          : (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : ''))) +
       (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
       '<div class="b-cards">' + cardsHtml + '</div>' +
       '<div class="b-acts">' +
         '<button type="button" data-act="spread">牌阵</button>' +
         '<button type="button" data-act="redraw">重抽</button>' +
+        '<button type="button" data-act="random">🎲 真随机抽</button>' +
         '<button type="button" data-act="extra">补一张</button>' +
         '<span class="b-hint">' + (all.length) + ' 张 · 点牌看大图</span>' +
       '</div>' +
@@ -1159,11 +1271,30 @@ function renderBoard(data){
     });
   });
   el.querySelectorAll('[data-act]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const act = btn.dataset.act;
       if(act === 'spread') send('换一个牌阵');
       else if(act === 'redraw') send('重抽这副牌');
       else if(act === 'extra') send('补一张牌');
+      else if(act === 'random'){
+        // 真随机抽牌：服务端 OS 内核熵，非种子、不可复现。
+        const spread = data.spread || '三张';
+        try{
+          const r = await fetch('/api/random-draw', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({session_id: sessionId, spread: spread})
+          });
+          const d = await r.json();
+          if(!d || !d.ok) throw new Error((d && d.error) || '随机抽牌失败');
+          if(typeof lastCards !== 'undefined') lastCards = d.cards;
+          const oldWrap = document.querySelector('#chat .draw-wrap');
+          if(oldWrap) oldWrap.remove();
+          renderCards($('chat'), null, d.cards, {canExtra:false});
+          renderBoard(d.cards);
+        }catch(err){
+          send('重抽这副牌');   // 失败时退回对话流程里的常规随机抽牌
+        }
+      }
     });
   });
 }
@@ -1508,7 +1639,7 @@ async function send(textOverride){
       if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
       if(obj.cards){ lastCards=obj.cards; await showCards(obj.cards); }
       if(obj.pick){
-        // 选牌轮：牌阵已定，等来访者亲手挑满张数后落位
+        // 选牌轮：牌阵已定。可亲手挑满落位，也可点「一键真随机」让系统用 OS 熵抽。
         const res = await renderPickStage(inner, bub, obj.pick);
         if(res && res.cards){
           lastCards = res.cards;
