@@ -320,12 +320,12 @@ ul,ol{margin:0;padding:0;list-style:none}
    颗粒贴在 body::after 上，指针穿透，任何页面都自带一层底片质感。 */
 :root{
   --gold-grad:linear-gradient(158deg,#F2E0B9 0%,#DEC28D 24%,#C9A86A 52%,#A5854E 78%,#8B6F40 100%);
-  /* 香槟金（哑光）：亮一点、饱和度低一点，像缎面而不是金漆——
+  /* 主按钮填充色：老金（黄铜）哑光——不做渐变，只给一道极细的受光边。
      渐变两端拉得太开（近白 → 褐）会像塑料镀金，这是「土」的来源 */
-  --gold-fill:#D3BD95;
-  --gold-fill-hi:#DDC8A3;
-  --gold-ink:#2A2215;
-  --edge-brass:inset 0 1px 0 rgba(255,255,255,.34), inset 0 -1px 0 rgba(0,0,0,.1);
+  --gold-fill:#BF9C5F;
+  --gold-fill-hi:#C7A46A;
+  --gold-ink:#221B0E;
+  --edge-brass:inset 0 1px 0 rgba(255,255,255,.26), inset 0 -1px 0 rgba(0,0,0,.14);
   --hair-x:linear-gradient(90deg,rgba(232,226,214,0),rgba(232,226,214,.18) 16%,rgba(232,226,214,.18) 84%,rgba(232,226,214,0));
   --hair-y:linear-gradient(180deg,rgba(232,226,214,0),rgba(232,226,214,.16) 14%,rgba(232,226,214,.16) 86%,rgba(232,226,214,0));
   --glow-gold:0 0 36px -8px rgba(201,168,106,.4);

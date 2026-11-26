@@ -96,21 +96,24 @@ header .spacer{display:none}
 /* 桌面端：包装层不参与布局，nav / 竖排句 / 底部仍按原顺序排成一条竖轨 */
 .rail-navwrap{display:contents}
 
-/* 主操作：新对话 */
+/* 主操作：新对话——不铺满金色，用金细线 + 金字，
+   全屏只留「发送」一个实心金按钮，金色才不像贴上去的 */
 #newBtn{
   position:relative;
   width:100%;min-height:38px;
   display:inline-flex;align-items:center;justify-content:center;gap:9px;
-  border:1px solid rgba(0,0,0,.14);border-radius:999px;
-  background:var(--gold-fill);color:var(--gold-ink);
-  font-size:var(--fs-13);font-weight:600;letter-spacing:.12em;
-  box-shadow:var(--edge-brass), 0 10px 22px -18px rgba(0,0,0,.9);
-  transition:box-shadow .22s var(--ease-out),transform .18s var(--ease-out),background .22s var(--ease-out);
+  border:1px solid rgba(201,168,106,.44);border-radius:999px;
+  background:linear-gradient(180deg, rgba(201,168,106,.11), rgba(201,168,106,.028));
+  color:var(--gold-bright);
+  font-size:var(--fs-13);font-weight:500;letter-spacing:.14em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  transition:border-color .22s var(--ease-out),background .22s var(--ease-out),color .22s var(--ease-out),transform .18s var(--ease-out);
 }
 #newBtn::before{content:"＋";font-weight:400;font-size:15px;line-height:1}
 #newBtn:hover{
-  background:var(--gold-fill-hi);
-  box-shadow:var(--edge-brass), 0 14px 26px -18px rgba(0,0,0,.95);
+  border-color:rgba(201,168,106,.72);
+  background:linear-gradient(180deg, rgba(201,168,106,.17), rgba(201,168,106,.05));
+  color:#F1DDB4;
 }
 #newBtn:active{transform:translateY(1px)}
 
