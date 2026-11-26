@@ -102,21 +102,30 @@ def compose(result, question=""):
     return "\n".join(lines)
 
 
-def compose_chat(message="", image_note=""):
+def compose_chat(message="", image_note="", prophecy=False, occult=False):
     """没有已抽的牌、也没连上模型时，给一句不越界的引导。
 
     image_note：本机 OCR 从图上读到的字。有就先把字念给用户听，
     让他知道图确实被读到了，再说明离线状态下能做什么。
+    prophecy / occult：用户开的模式要先认账，否则「开了没反应」会被当成坏了。
     """
     head = ""
     if str(image_note or "").strip():
         head = ("【我先把图上的字读出来了】\n" + str(image_note).strip()[:1200] +
                 "\n\n（这些字是本机 OCR 读的，可能有错字；看得对不对，你可以直接改。）\n\n")
+    modes = ""
+    if prophecy:
+        modes += ("\n\n（预言模式已经打开：但那段「展望」得由模型来写，现在没连上模型，"
+                  "所以还展望不了。连上之后，同一副牌会自动带上「仅供娱乐」的趋势式解读。）")
+    if occult:
+        modes += ("\n\n（神秘学模式已经打开：连上模型后，通灵 / 召唤 / 仪式这类话题就能"
+                  "按神秘学语境展开谈。现在先只能把牌面整理给你。）")
     return (
         head + _NOTICE + "\n\n"
         "不过抽牌和读牌面都不需要联网。你可以说「用三张牌阵抽牌」，"
         "或点选一个牌阵；我会把牌按传统几何摆好，并把每个牌位在问什么、"
         "每张牌的传统牌意完整整理给你。等连上模型后，再就着这副牌为你解读。"
+        + modes
     )
 
 

@@ -1177,12 +1177,20 @@ async function loadConfig(){
   $('model').value = c.model || '';
   $('apiKey').value = ''; // never prefill the secret
   $('apiKey').placeholder = c.api_key_set ? '已保存密钥（留空则不覆盖）' : 'sk-…';
+  if($('keyState')){
+    $('keyState').textContent = c.api_key_set
+      ? uiText('已保存密钥 · 留空保存不会覆盖', 'Key saved · leaving this blank keeps it')
+      : uiText('未保存密钥', 'No key saved');
+    $('keyState').classList.toggle('is-set', c.api_key_set === true);
+  }
+  if($('clearKeyBtn')) $('clearKeyBtn').hidden = c.api_key_set !== true;
   $('temp').value = c.temperature ?? 0.8;
   $('timeout').value = c.timeout ?? 120;
   $('toolsEnabled').checked = true; // 工具调用与语气一样恒定开启，配置里的 false 不再生效
   $('toneEnabled').checked = true; // 语气系统恒定开启，忽略配置里可能残留的 false
   $('prophecyEnabled').checked = c.prophecy_enabled === true;
   $('prophecyChip').classList.toggle('on', c.prophecy_enabled === true);
+  if($('occultEnabled')) $('occultEnabled').checked = c.occult_enabled === true;
   if($('budget')) $('budget').value = c.daily_token_budget ?? 0;
   if($('maxOut')) $('maxOut').value = c.max_output_tokens ?? 0;
   if($('maxHist')) $('maxHist').value = c.max_history_messages ?? 20;
@@ -1214,8 +1222,34 @@ $('shelfNewBtn').onclick = () => { closeSheet($('shelfOverlay')); newSession(); 
 $('newBtn').onclick = () => { newSession(); };
 
 $('prophecyEnabled').addEventListener('change', e => {
-  $('prophecyChip').classList.toggle('on', e.target.checked);
+  const on = e.target.checked;
+  $('prophecyChip').classList.toggle('on', on);
+  toast(on ? uiText('预言模式已开启 · 仅供娱乐，保存后生效', 'Prophecy mode on (for entertainment) · save to apply')
+           : uiText('预言模式已关闭 · 回到不预测具体事件', 'Prophecy mode off'));
 });
+if($('occultEnabled')){
+  $('occultEnabled').addEventListener('change', e => {
+    toast(e.target.checked
+      ? uiText('神秘学模式已开启 · 保存后生效', 'Occult mode on · save to apply')
+      : uiText('神秘学模式已关闭', 'Occult mode off'));
+  });
+}
+if($('clearKeyBtn')){
+  $('clearKeyBtn').onclick = async () => {
+    if(!window.confirm(uiText('清除已保存的 API key？清掉之后要重新填才能连模型。', 'Clear the saved API key? You will have to paste it again to reconnect.'))) return;
+    try{
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key_clear: true })
+      });
+      await loadConfig();
+      toast(uiText('已清除保存的密钥', 'Saved key cleared'));
+    }catch(e){
+      toast(uiText('清除失败：', 'Failed: ') + e.message);
+    }
+  };
+}
 
 function collectConfig(){
   return {
@@ -1229,6 +1263,7 @@ function collectConfig(){
     tools_enabled: $('toolsEnabled').checked,
     tone_enabled: $('toneEnabled').checked,
     prophecy_enabled: $('prophecyEnabled').checked,
+    occult_enabled: $('occultEnabled') ? $('occultEnabled').checked : false,
     language: (localStorage.getItem('olivia.lang') || 'zh').indexOf('en') === 0 ? 'en' : 'zh',
     daily_token_budget: parseInt($('budget').value)||0,
     max_output_tokens: parseInt($('maxOut').value)||0,

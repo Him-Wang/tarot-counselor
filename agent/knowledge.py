@@ -57,9 +57,18 @@ def _tokens(query):
     return toks
 
 
-def retrieve(query, top_k=3, max_chars=9000):
-    """Return (selected_docs_as_context_string, list_of_relpaths_used)."""
+OCCULT_PREFIX = "occult/"
+
+
+def retrieve(query, top_k=3, max_chars=9000, include_occult=False):
+    """Return (selected_docs_as_context_string, list_of_relpaths_used).
+
+    include_occult=False 时 knowledge/occult/ 下的资料完全不参与检索——
+    神秘学语境库只有在用户显式打开「神秘学模式」后才进上下文。
+    """
     docs = _read_files()
+    if not include_occult:
+        docs = [d for d in docs if not d["rel"].replace("\\", "/").startswith(OCCULT_PREFIX)]
     if not docs or not query.strip():
         return "", []
 
@@ -81,6 +90,10 @@ def retrieve(query, top_k=3, max_chars=9000):
         for t in toks:
             if t in head:
                 score += 3
+        # 神秘学语境库是本轮显式开启才进来的：篇幅短，若按原始命中次数
+        # 排序会被牌义词条那种大文件整片压住，这里按 1.6 倍加权。
+        if include_occult and d["rel"].replace("\\", "/").startswith(OCCULT_PREFIX):
+            score = int(score * 1.6)
         if score:
             scored.append((score, d))
     scored.sort(key=lambda x: -x[0])
@@ -103,8 +116,11 @@ def retrieve(query, top_k=3, max_chars=9000):
     return ("\n\n".join(parts), used) if parts else ("", [])
 
 
-def list_docs():
-    return [d["rel"] for d in _read_files()]
+def list_docs(include_occult=False):
+    docs = _read_files()
+    if not include_occult:
+        docs = [d for d in docs if not d["rel"].replace("\\", "/").startswith(OCCULT_PREFIX)]
+    return [d["rel"] for d in docs]
 
 
 _MEANINGS_CACHE = {}

@@ -120,6 +120,7 @@ DEFAULT_CONFIG = {
     "tools_enabled": True,
     "memory_enabled": True,
     "prophecy_enabled": False,
+    "occult_enabled": False,   # 神秘学模式（通灵 / 召唤 / 仪式）：默认关闭
     "two_phase_draw": True,
     "tone_enabled": True,
     "language": "zh",
@@ -147,13 +148,37 @@ def load_config():
     return cfg
 
 
-def save_config(cfg):
+def _saved_key_enc():
+    """只读磁盘上的密钥密文；load_config() 会把它弹出来解密，这里要的是原始值。"""
+    if not os.path.exists(CONFIG_PATH):
+        return ""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            return str((json.load(f) or {}).get("api_key_enc") or "")
+    except Exception:
+        return ""
+
+
+def save_config(cfg, drop_key=False):
+    """写配置。
+
+    api_key 留空 == 「不覆盖」：界面上那格永远不回填（设置页重开时是空的），
+    以前这里一律 pop 掉 api_key_enc，于是「保存一次 → key 就没了」。
+    现在留空就把磁盘上已有的密文原样搬回来；真要抹掉用 drop_key=True
+    （设置里那个「清除已保存的密钥」按钮）。
+    """
     disk = dict(cfg)
     key = str(disk.pop("api_key", "") or "")
-    if key:
+    if drop_key:
+        disk.pop("api_key_enc", None)
+    elif key:
         disk["api_key_enc"] = secret_store.protect(key)
     else:
-        disk.pop("api_key_enc", None)
+        prev = _saved_key_enc()
+        if prev:
+            disk["api_key_enc"] = prev
+        else:
+            disk.pop("api_key_enc", None)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(disk, f, ensure_ascii=False, indent=2)
     secret_store.harden(CONFIG_PATH)
@@ -184,6 +209,15 @@ def load_prophecy(cfg=None):
     """预言模式覆盖层（仅供娱乐），仅在开启时加载。"""
     try:
         with open(_prompt_path("prophecy", _lang(cfg)), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def load_occult(cfg=None):
+    """神秘学模式覆盖层：通灵 / 召唤 / 仪式这类话题的语境与边界，仅在用户开启时加载。"""
+    try:
+        with open(_prompt_path("occult", _lang(cfg)), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
@@ -684,7 +718,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({
                 "config": mask(cfg),
                 "presets": PRESETS,
-                "docs": knowledge.list_docs(),
+                "docs": knowledge.list_docs(include_occult=load_config().get("occult_enabled", False)),
                 "spreads": spreads_mod.list_spreads(),
                 "usage": memory.usage_today(),
                 "version": VERSION,
@@ -704,7 +738,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif p == "/api/knowledge":
-            self._send_json({"docs": knowledge.list_docs()})
+            self._send_json({"docs": knowledge.list_docs(
+                include_occult=load_config().get("occult_enabled", False))})
         elif p.startswith("/cards/"):
             self._send_static(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards"),
                               p[len("/cards/"):], "image/jpeg")
@@ -770,7 +805,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/config":
             cfg = load_config()
             for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature", "timeout",
-                      "think", "tools_enabled", "memory_enabled", "prophecy_enabled",
+                      "think", "tools_enabled", "memory_enabled", "prophecy_enabled", "occult_enabled",
                       "two_phase_draw", "tone_enabled", "language", "daily_token_budget",
                       "max_output_tokens", "max_history_messages", "max_history_chars",
                       "safety_second_check"):
@@ -784,8 +819,9 @@ class Handler(BaseHTTPRequestHandler):
                 supplied_key in ("****", "***") or "…" in supplied_key
             ):
                 cfg["api_key"] = load_config().get("api_key", "")
-            save_config(cfg)
-            self._send_json({"ok": True, "config": mask(cfg),
+            save_config(cfg, drop_key=bool(body.get("api_key_clear")))
+            fresh = load_config()
+            self._send_json({"ok": True, "config": mask(fresh),
                              "usage": memory.usage_today()})
 
         elif p == "/api/backup":
@@ -806,7 +842,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg = dict(saved)
             for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature",
                       "timeout", "think", "tools_enabled", "memory_enabled",
-                      "prophecy_enabled", "tone_enabled", "two_phase_draw"):
+                      "prophecy_enabled", "occult_enabled", "tone_enabled", "two_phase_draw"):
                 if k in body:
                     cfg[k] = body[k]
             cfg["api_key"] = effective_key
@@ -1030,7 +1066,8 @@ class Handler(BaseHTTPRequestHandler):
                         _record_extra(sid, pending_result, card)
 
             # retrieve relevant knowledge for this turn
-            context, used = knowledge.retrieve(message)
+            context, used = knowledge.retrieve(
+                message, include_occult=cfg.get("occult_enabled", False))
             system = load_persona(cfg) + now_context(cfg)
             # 语气系统：Olivia 的"声音"——真实女性塔罗师的措辞 + 自然 NVC。
             # 放在人格之后、其余上下文之前，确保它稳定地盖住表达方式。
@@ -1043,6 +1080,11 @@ class Handler(BaseHTTPRequestHandler):
                 prophecy = load_prophecy(cfg)
                 if prophecy:
                     system += "\n\n---\n" + prophecy
+            # 神秘学模式：用户显式开启后才加载语境库与覆盖层
+            if cfg.get("occult_enabled", False):
+                occult = load_occult(cfg)
+                if occult:
+                    system += "\n\n---\n" + occult
             if context:
                 system += (
                     "\n\n---\n以下是与本次对话相关的专业资料，回答专业判断时以这些资料为准，"
@@ -1251,7 +1293,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif _offline:
                     # ---- 离线无牌对话：不调模型，给不越界的引导 ----
                     emit({"offline": True})
-                    for piece in offline.chunks(offline.compose_chat(message, image_note=ocr_text)):
+                    for piece in offline.chunks(offline.compose_chat(
+                            message, image_note=ocr_text,
+                            prophecy=cfg.get("prophecy_enabled", False),
+                            occult=cfg.get("occult_enabled", False))):
                         full.append(piece)
                         emit({"token": piece})
                 else:
@@ -1361,7 +1406,10 @@ class Handler(BaseHTTPRequestHandler):
                         _emit_err({"token": piece})
                 else:
                     _emit_err({"offline": True, "fallback": "模型连接失败"})
-                    for piece in offline.chunks(offline.compose_chat(message, image_note=ocr_text)):
+                    for piece in offline.chunks(offline.compose_chat(
+                            message, image_note=ocr_text,
+                            prophecy=cfg.get("prophecy_enabled", False),
+                            occult=cfg.get("occult_enabled", False))):
                         _emit_err({"token": piece})
                 _emit_err({"done": True})
         elif p == "/api/memory":

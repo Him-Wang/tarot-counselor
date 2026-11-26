@@ -11,9 +11,9 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon.svg">
-<link rel="stylesheet" href="/static/design-tokens.css?v=17">
-<link rel="stylesheet" href="/static/design-components.css?v=6">
-<link rel="stylesheet" href="/static/app.css?v=35">
+<link rel="stylesheet" href="/static/design-tokens.css?v=18">
+<link rel="stylesheet" href="/static/design-components.css?v=7">
+<link rel="stylesheet" href="/static/app.css?v=37">
 </head>
 <body>
 <div class="sky" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i><i class="l6"></i></div>
@@ -110,7 +110,11 @@
     </div>
     <div class="row">
       <div class="field"><label>模型 model（可下拉选，也可手填）</label><input id="model" list="modelChoices" placeholder="deepseek-flash"><datalist id="modelChoices"><option value="deepseek-flash"><option value="deepseek-v4-pro"><option value="deepseek-chat"><option value="deepseek-reasoner"></datalist></div>
-      <div class="field"><label>API key</label><input id="apiKey" type="password" placeholder="sk-…（留空则不覆盖已保存的）"></div>
+      <div class="field">
+        <label>API key</label>
+        <input id="apiKey" type="password" placeholder="sk-…（留空则不覆盖已保存的）">
+        <div class="key-note"><span id="keyState">未保存密钥</span><button type="button" id="clearKeyBtn" class="link-btn" hidden>清除已保存的密钥</button></div>
+      </div>
     </div>
     <div class="row">
       <div class="field"><label>temperature</label><input id="temp" type="number" step="0.1" value="0.8"></div>
@@ -125,6 +129,9 @@
     <p class="desc" style="margin:4px 0 12px;font-size:var(--fs-caption)">Olivia 始终用更贴近真人的女性塔罗师语气说话，自然地先听见你的感受、再给方向；不喊术语、不演角色。这是她的一部分，无法关闭。</p>
     <label class="switch"><input type="checkbox" id="prophecyEnabled"> 🔮 预言模式 <span style="color:var(--warn-ink)">（仅供娱乐，可随时开关）</span></label>
     <p class="desc" style="margin:4px 0 12px;font-size:var(--fs-caption)">开启后，Olivia 会用"展望/趋势"的口吻解牌并附上"仅供娱乐"提示。<b>医疗、法律、财务、危机等安全边界仍然不放开</b>；关闭即恢复"不预测具体事件"的常规模式。</p>
+
+    <label class="switch"><input type="checkbox" id="occultEnabled"> <span aria-hidden="true">◈</span> <span data-i18n="神秘学模式">神秘学模式</span> <span style="color:var(--warn-ink)" data-i18n="（通灵 / 召唤 / 仪式 · 可随时开关）">（通灵 / 召唤 / 仪式 · 可随时开关）</span></label>
+    <p class="desc" style="margin:4px 0 12px;font-size:var(--fs-caption)" data-i18n="开启后可以正面聊通灵、召唤、仪式与神秘学体系，也可以用塔罗照见这类经验；不给可能伤到人的实操步骤，也不冒充通灵者。医疗、法律、财务与危机边界仍不放开。语境库在 agent/knowledge/occult/，随时可以往里放资料。">开启后可以正面聊通灵、召唤、仪式与神秘学体系，也可以用塔罗照见这类经验；不给可能伤到人的实操步骤，也不冒充通灵者。医疗、法律、财务与危机边界仍不放开。语境库在 agent/knowledge/occult/，随时可以往里放资料。</p>
 
     <div class="field" style="margin:18px 0 4px;border-top:1px solid var(--line);padding-top:16px">
       <label><span data-i18n="主动关怀">主动关怀</span> <span id="careBadge" class="care-badge" hidden>0</span></label>
@@ -365,7 +372,7 @@
   </div>
 </div>
 
-<script src="/static/i18n.js?v=15"></script>
-<script src="/static/app.js?v=32"></script>
+<script src="/static/i18n.js?v=17"></script>
+<script src="/static/app.js?v=34"></script>
 </body>
 </html>

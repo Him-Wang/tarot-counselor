@@ -228,6 +228,8 @@ body.has-board .work{grid-template-columns:minmax(0,1fr) var(--board-w)}
 #chat{
   flex:1;min-height:0;
   overflow-y:auto;overscroll-behavior:contain;
+  /* 告诉合成器这里是滚动容器：滚起来只移动已有图层，不整块重画 */
+  will-change:scroll-position;
   display:flex;flex-direction:column;gap:26px;
   /* 底部留出 62px：输入框上缘有一道 54px 的渐隐，不留空的话最后一行
      （朗读 / 存成图）会正好压在渐隐里，看着像被遮住 */
@@ -739,8 +741,9 @@ body.has-board .draw-wrap{display:none}
   position:fixed;inset:0;z-index:60;
   display:none;align-items:flex-start;justify-content:center;
   padding:96px 20px 72px;
-  background:rgba(5,4,9,.72);
-  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  /* 不用 backdrop-filter：浮层底下的星空一直在动，模糊要每帧重算整屏，
+     开设置时最明显；换成更实的底色，观感几乎一致但不再随动重绘。 */
+  background:rgba(5,4,9,.88);
   overflow-y:auto;
 }
 .overlay.show{display:flex}
@@ -887,8 +890,7 @@ body.has-board .draw-wrap{display:none}
   position:fixed;inset:0;z-index:90;
   display:flex;align-items:center;justify-content:center;
   padding:36px;
-  background:rgba(4,3,7,.94);
-  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  background:rgba(4,3,7,.96);
 }
 .lb-inner{display:flex;flex-direction:column;align-items:center;gap:14px;max-height:100%}
 .lb-inner img{
@@ -930,8 +932,7 @@ body.has-board .draw-wrap{display:none}
     gap:10px 12px;
     padding:12px 16px;
     border-right:0;border-bottom:1px solid var(--line);
-    background:rgba(8,7,13,.94);
-    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    background:rgba(8,7,13,.985);
   }
   .rail-brand{margin:0;padding:0;grid-column:1}
   .title b{font-size:17px}
@@ -1015,3 +1016,19 @@ html[lang="en"] .msg.greeting > div::after{
 html[lang="en"] .rail-quote{
   display:none;
 }
+
+/* ---- API key 状态行：让「已保存 / 未保存」一眼可见 ---- */
+.key-note{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin-top:7px;font-size:var(--fs-12);color:var(--muted-2);
+}
+.key-note #keyState{letter-spacing:.04em}
+.key-note #keyState.is-set{color:var(--ok)}
+.link-btn{
+  appearance:none;border:0;background:none;padding:0;
+  font:inherit;font-size:var(--fs-12);
+  color:var(--muted-2);cursor:pointer;
+  border-bottom:1px solid rgba(145,139,159,.32);
+  transition:color .2s var(--ease),border-color .2s var(--ease);
+}
+.link-btn:hover{color:var(--danger);border-bottom-color:rgba(201,123,106,.6)}

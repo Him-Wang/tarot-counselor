@@ -149,7 +149,12 @@ ul,ol{margin:0;padding:0;list-style:none}
 .sky i{
   position:absolute;inset:0;transform-origin:50% 50%;
   display:block;background-repeat:repeat;
-  /* 不给 will-change：6 层常驻合成层很吃显存，让浏览器按动画自己提升就够了 */
+  /* 六层各自提升为合成层：闪烁只是改 opacity、自转只是转纹理，
+     都不用每帧重画上百万像素的渐变（这才是滚动/打字卡顿的主因）。
+     显存吃紧时浏览器会自己回落，画面完全不变。 */
+  will-change:opacity;
+  transform:translateZ(0);
+  backface-visibility:hidden;
 }
 .sky .l1{
   background-size:421px 421px;
@@ -348,6 +353,9 @@ body::after{
   content:"";position:fixed;inset:0;z-index:3;pointer-events:none;
   opacity:.045;
   /* 不用 mix-blend-mode：全屏混合模式会让每次滚动都重算整屏，卡顿主要来源之一 */
+  /* 单独一层：颗粒是静的，滚动时不该跟着重画 */
+  transform:translateZ(0);
+  will-change:opacity;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
   background-size:140px 140px;
 }
@@ -357,6 +365,8 @@ body::after{
    有了它，纯黑的边角就不再是死黑，画面有了进深。 */
 .veil{
   position:fixed;inset:0;z-index:0;pointer-events:none;
+  /* 静态图层，单独提升一次，滚动别拉着它一起重画 */
+  transform:translateZ(0);
   background:
     radial-gradient(120% 86% at 50% 34%, rgba(10,9,16,0) 38%, rgba(6,5,11,.5) 78%, rgba(4,3,8,.82) 100%),
     radial-gradient(70% 42% at 50% 0%, rgba(201,168,106,.05), transparent 70%);
