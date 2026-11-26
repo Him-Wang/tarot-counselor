@@ -768,6 +768,8 @@ body.has-board .draw-wrap{display:none}
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:13px;min-width:0}
 .field label{font-size:12px;letter-spacing:.1em;color:var(--muted)}
 .field .note{font-size:12px;color:var(--muted-2);line-height:1.6}
+/* 设置里的小出口：.field 是 flex 列，按钮默认会被拉满整行，这里让它只占自己那么宽 */
+.field .care-entry-btn,.care-entry-btn{align-self:flex-start}
 .sheet input[type=text],.sheet input[type=password],.sheet input[type=number],.sheet input:not([type]),.sheet select,.sheet textarea{
   width:100%;min-height:34px;padding:6px 10px;
   border:1px solid var(--line-2);border-radius:var(--radius-xs);

@@ -1682,7 +1682,8 @@ async function loadCare(silent){
   $('quietStart').value = s.quiet_start||'22:00';
   $('quietEnd').value = s.quiet_end||'08:00';
   const unread = s.unread||0;
-  $('careBadge').hidden = unread===0; $('careBadge').textContent = unread;
+  const badge = $('careBadge');
+  if(badge){ badge.hidden = unread===0; badge.textContent = unread; }
   $('careUnread').hidden = unread===0; $('careUnread').textContent = unread;
   renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
   if(!silent) $('careStatus').className='status';
@@ -1827,7 +1828,14 @@ $('watchClearLogBtn').onclick = async () => {
   await loadCare(true);
   $('careStatus').className='status ok'; $('careStatus').textContent='判定日志已清空';
 };
-$('careBtn').onclick = () => { location.href = '/care'; };
+// 关怀页没有导航入口：只有安全闸门命中时才会自动跳过去。
+// 主动关怀的设置留在设置里，从设置→「主动关怀」打开这个浮层。
+const careEntry = $('careSettingsBtn');
+if(careEntry) careEntry.onclick = () => {
+  closeSheet($('overlay'));
+  openSheet($('careOverlay'));
+  loadCare();
+};
 $('careCloseBtn').onclick = () => { closeSheet($('careOverlay')); };
 $('careMaster').onchange = async e => {
   await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
