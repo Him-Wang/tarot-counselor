@@ -35,6 +35,8 @@ import tools
 import spreads as spreads_mod
 import scheduler
 import watchers
+import goals
+import archive
 import plugin_kb
 import plugin_vision
 import plugin_ocr
@@ -262,6 +264,14 @@ _awaiting_spread = {}        # session_id -> {"at": ...}：已问过「用哪个
 _last_spreads = {}           # session_id -> {"result": ..., "at": ...}：最近一次解读过的牌，供补牌复用
 _PENDING_TTL = 30 * 60       # 30 分钟后未提问，自动放弃这副牌 / 这次选阵
 
+# ---- 占卜档案：解读完成后请来访者亲口说情绪词，答复后落一条 JSON ----
+# 流程：解读轮收尾 -> emit {"emotion_ask":...} -> 前端问一下 -> 来访者点情绪 chip
+# 或自己打字 -> POST /api/archive {op:"add", ...} 写入。Olivia 只问、只记用户说的，
+# 绝不从文本猜、也不替用户点选；情绪词未得到答复前不写档案。
+_EMOTION_TTL = 30 * 60
+_pending_archive = {}        # session_id -> {result, question, points, spread, at}
+
+
 # 补牌必须由来访者显式提出（界面上也有「补一张」按钮），模型不能自己补。
 _EXTRA_RE = re.compile(r"(补一张|补牌|补个牌|再来一张|再补一张|加一张)")
 
@@ -307,6 +317,10 @@ def _purge_pending():
     for sid in [k for k, v in _last_spreads.items()
                 if now - v.get("at", 0) > _PENDING_TTL]:
         _last_spreads.pop(sid, None)
+    # 占卜档案等情绪答复的排队也按 TTL 回收，避免长期挂着无人认领的记录
+    for sid in [k for k, v in _pending_archive.items()
+                if now - v.get("at", 0) > _EMOTION_TTL]:
+        _pending_archive.pop(sid, None)
 
 
 def _draw_requested(message):
@@ -758,7 +772,23 @@ class Handler(BaseHTTPRequestHandler):
                 "outbox": scheduler.list_outbox(),
                 "watchers": watchers.list_watchers(),
                 "watcher_events": watchers.list_events(limit=50),
+                "goals": goals.list_goals(),
+                "goal_stats": goals.stats(),
             })
+        elif p == "/api/goals":
+            self._send_json({
+                "goals": goals.list_goals(),
+                "stats": goals.stats(),
+            })
+        elif p == "/api/archive":
+            q = self.path.split("?", 1)[1] if "?" in self.path else ""
+            from urllib.parse import parse_qs
+            params = parse_qs(q)
+            user = (params.get("user") or [""])[0]
+            topic = (params.get("topic") or [""])[0]
+            query = (params.get("query") or [""])[0]
+            recs = archive.search(query=query, user=user or None, topic=topic, limit=100)
+            self._send_json({"records": recs, "stats": archive.stats()})
         elif p == "/api/plugins":
             self._send_json({
                 "kb": {
@@ -1099,6 +1129,15 @@ class Handler(BaseHTTPRequestHandler):
                         system += "\n\n---\n" + mem_ctx
                 except Exception:
                     pass
+            # inject user-goal domain (goals + next steps) as memory context.
+            # 只作背景，不替他决定、不擅自把建议当已确认、不推进状态。
+            if cfg.get("memory_enabled", True):
+                try:
+                    goals_ctx = goals.summary_for_prompt()
+                    if goals_ctx:
+                        system += "\n\n---\n" + goals_ctx
+                except Exception:
+                    pass
             # inject KB notes relevant to this turn
             try:
                 notes_ctx, _nids = plugin_kb.search_notes(message, top_k=2)
@@ -1177,6 +1216,7 @@ class Handler(BaseHTTPRequestHandler):
                 # M2: keep the structured draw_cards result for this turn, so
                 # draw history records exactly the cards that were drawn.
                 turn_draw = None
+                reading_round = False   # 解读轮（牌已抽出、本轮给出问题）完成后排队入档
                 if local_draw is not None:
                     # ---- 抽牌轮：纯本地完成，不调用大模型、不需要 API key ----
                     emit({"tool": tools.summary("draw_cards", local_draw)})
@@ -1213,6 +1253,7 @@ class Handler(BaseHTTPRequestHandler):
                     _last_spreads[sid] = {"result": pending_result, "at": time.time()}
                     # 牌在抽牌轮已经记入记忆，这里不再重复入库。
                     turn_draw = None
+                    reading_round = True
                     if _offline:
                         # 离线降级：不假装模型解读，只按传统牌意 + 牌位 + 种子
                         # 客观整理这副已抽出的牌，让「看牌 → 读牌」链走完。
@@ -1381,6 +1422,22 @@ class Handler(BaseHTTPRequestHandler):
                         memory.add_usage(usage_totals["in"], usage_totals["out"])
                     except Exception:
                         pass
+                # 解读轮收尾：把这一副牌排进档案队列，等来访者亲口说情绪词再落 JSON。
+                # 只在真正完成了解读（full 里有模型/离线正文）且不是抽牌/提问轮时排队；
+                # 情绪未得到答复前不写档案，Olivia 也不代选。
+                if (reading_round and pending_result is not None and full
+                        and preset_reply is None):
+                    try:
+                        _pending_archive[sid] = {
+                            "question": str(message or "").strip(),
+                            "spread": pending_result.get("spread", ""),
+                            "points": "".join(full)[:4000],
+                            "cards": [c.get("name", "") for c in pending_result.get("cards", [])],
+                            "at": time.time(),
+                        }
+                        emit({"emotion_ask": True})
+                    except Exception:
+                        pass
                 emit({"done": True})
                 # persist this turn (rule-based extraction, ~0 ms) after stream
                 if cfg.get("memory_enabled", True) and full and preset_reply is None:
@@ -1509,6 +1566,8 @@ class Handler(BaseHTTPRequestHandler):
                         "outbox": scheduler.list_outbox(),
                         "watchers": watchers.list_watchers(),
                         "watcher_events": watchers.list_events(limit=50),
+                        "goals": goals.list_goals(),
+                        "goal_stats": goals.stats(),
                     })
                     return
                 else:
@@ -1521,7 +1580,93 @@ class Handler(BaseHTTPRequestHandler):
                     "outbox": scheduler.list_outbox(),
                     "watchers": watchers.list_watchers(),
                     "watcher_events": watchers.list_events(limit=50),
+                    "goals": goals.list_goals(),
+                    "goal_stats": goals.stats(),
                 })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif p == "/api/goals":
+            op = body.get("op", "")
+            try:
+                if op == "add":
+                    gid = goals.add_goal(
+                        body.get("title", ""), body.get("note", ""),
+                        body.get("status", "active"), body.get("next_step", ""),
+                        body.get("next_source", "user"))
+                    ok = bool(gid)
+                elif op == "update":
+                    ok = goals.update_goal(int(body.get("id", 0)), body.get("data", {}))
+                elif op == "delete":
+                    ok = goals.delete_goal(int(body.get("id", 0)))
+                elif op == "set_next":
+                    ok = goals.set_next_step(int(body.get("id", 0)),
+                                             body.get("text", ""), body.get("source", "user"))
+                elif op == "confirm_step":
+                    ok = goals.confirm_step(int(body.get("id", 0)))
+                elif op == "link":
+                    ok = goals.link(int(body.get("id", 0)),
+                                    body.get("kind", "task"), int(body.get("ref_id", 0)))
+                elif op == "unlink":
+                    ok = goals.unlink(int(body.get("id", 0)),
+                                      body.get("kind", "task"), int(body.get("ref_id", 0)))
+                else:
+                    self._send_json({"ok": False, "error": "unknown op"}, 400)
+                    return
+                self._send_json({
+                    "ok": ok, "goals": goals.list_goals(), "stats": goals.stats()})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, 500)
+
+        elif p == "/api/archive":
+            op = body.get("op", "")
+            sid = str(body.get("session_id") or "default")
+            try:
+                if op == "add":
+                    rid = archive.append(
+                        body.get("user", ""), body.get("question", ""),
+                        body.get("spread", ""), body.get("points", ""),
+                        body.get("emotion_tags") or [], body.get("cards") or [],
+                        body.get("extra"))
+                    _pending_archive.pop(sid, None)
+                    ok = bool(rid)
+                elif op == "answer_emotion":
+                    # 来访者答完「现在的心情」：从排队的解读里落一条档案。
+                    # 只记用户亲口说的词——前端点选的 chip 或用户自己打的字；
+                    # 若只给自由文本，则只挑出文中确实出现的已知情绪词，不推断。
+                    pend = _pending_archive.get(sid)
+                    if not pend or time.time() - pend.get("at", 0) > _EMOTION_TTL:
+                        self._send_json({"ok": False, "error": "这次解读已过期，没有可归档的记录"}, 400)
+                        return
+                    _pending_archive.pop(sid, None)
+                    tags = body.get("emotion_tags")
+                    if not isinstance(tags, list):
+                        tags = [e for e in archive.KNOWN_EMOTIONS
+                                if e in str(body.get("text") or body.get("message") or "")]
+                    _user = str(body.get("user") or "")
+                    if not _user:
+                        try:
+                            _prof = memory.list_profile() or {}
+                            _user = str(_prof.get("称呼") or _prof.get("name") or "")
+                        except Exception:
+                            _user = ""
+                    rid = archive.append(
+                        _user, pend.get("question", ""), pend.get("spread", ""),
+                        pend.get("points", ""), tags, pend.get("cards") or [],
+                        {"session_id": sid, "source": "chat"})
+                    ok = bool(rid)
+                    if ok:
+                        self._send_json({"ok": True, "id": rid,
+                                         "emotion_tags": tags, "user": _user})
+                        return
+                elif op == "clear":
+                    ok = archive.clear(body.get("user") or None)
+                else:
+                    self._send_json({"ok": False, "error": "unknown op"}, 400)
+                    return
+                self._send_json({
+                    "ok": ok, "records": archive.search(limit=100),
+                    "stats": archive.stats()})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 500)
 

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="/static/icon.svg">
 <link rel="stylesheet" href="/static/design-tokens.css?v=18">
 <link rel="stylesheet" href="/static/design-components.css?v=7">
-<link rel="stylesheet" href="/static/app.css?v=37">
+<link rel="stylesheet" href="/static/app.css?v=38">
 </head>
 <body>
 <div class="sky" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i><i class="l6"></i></div>
@@ -265,6 +265,17 @@
     </div>
     <div class="status" id="careStatus"></div>
 
+    <h3 style="font-size:var(--fs-body);font-weight:700;color:var(--accent-ink);margin:16px 0 8px">目标 · 下一步 <span class="desc" style="font-weight:400">（你定方向，Olivia 只回访、不替你推进）</span></h3>
+    <p class="desc" style="margin:4px 0">这里放你正在推进的事。每个目标有状态和下一步；标注「建议」的下一步是 Olivia 提的，只有你点头才算数。</p>
+    <div id="goalList" class="mem-list">加载中…</div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label>目标</label><input id="goalTitle" placeholder="例如：准备心理咨询考试"></div>
+      <div class="field"><label>背景备注（可选）</label><input id="goalNote" placeholder="为什么重要、时间线…"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="goalAddBtn">＋ 新建目标</button>
+    </div>
+
     <h3 style="font-size:var(--fs-body);font-weight:700;color:var(--accent-ink);margin:16px 0 8px">定时任务</h3>
     <div id="taskList" class="mem-list">加载中…</div>
     <div class="row" style="margin-top:10px">
@@ -355,11 +366,23 @@
     <h4 style="font-size:var(--fs-small);margin:14px 0 6px;color:var(--muted)">最近判定</h4>
     <div id="watchLog" class="mem-list">加载中…</div>
 
-    <h3 style="font-size:var(--fs-body);font-weight:700;color:var(--accent-ink);margin:16px 0 8px">收件箱 <span id="careUnread" class="care-badge" hidden>0</span></h3>
+    <h3 style="font-size:var(--fs-body);font-weight:700;color:var(--accent-ink);margin:16px 0 8px">主动汇报 · 收件箱 <span id="careUnread" class="care-badge" hidden>0</span></h3>
+    <p class="desc" style="margin:4px 0">Olivia 在后台到点或盯事命中时写来的消息。关联的目标会一并标在消息上。这里只是汇报，决定仍在你手里。</p>
     <div id="outboxList" class="mem-list care-flow">加载中…</div>
     <div class="care-foot">
       <button id="outboxReadBtn">全部标为已读</button>
     </div>
+
+    <h3 style="font-size:var(--fs-body);font-weight:700;color:var(--accent-ink);margin:16px 0 8px">占卜档案 <span class="desc" style="font-weight:400">（按用户 / 主题回看历史解读）</span></h3>
+    <p class="desc" style="margin:4px 0">每次占卜的时间、问题、牌阵、要点与情绪标签都留在这里，只存本机。情绪标签只记你亲口说过的。</p>
+    <div class="row" style="margin-top:8px">
+      <div class="field"><label>用户</label><input id="arcUser" placeholder="留空看全部"></div>
+      <div class="field"><label>主题 / 关键词</label><input id="arcTopic" placeholder="例如：工作、焦虑"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button id="arcSearchBtn">检索档案</button>
+    </div>
+    <div id="arcList" class="mem-list" style="margin-top:8px">点「检索档案」查看历史。</div>
     <div class="actions"><button class="primary" id="careCloseBtn">完成</button></div>
   </div>
 </div>
@@ -373,6 +396,6 @@
 </div>
 
 <script src="/static/i18n.js?v=17"></script>
-<script src="/static/app.js?v=35"></script>
+<script src="/static/app.js?v=37"></script>
 </body>
 </html>

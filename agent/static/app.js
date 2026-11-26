@@ -1335,6 +1335,55 @@ $('testBtn').onclick = async () => {
 };
 
 let abortCtl = null, stopped = false;
+
+// 占卜档案：解读完成后 Olivia 问一句「现在的心情」，由来访者亲口点选/输入，
+// 答复后经 /api/archive answer_emotion 落一条 JSON。Olivia 只问、只记，不猜不代选。
+const ARCHIVE_EMOTIONS = ['平静','焦虑','难过','开心','愤怒','迷茫','纠结','疲惫','放松','期待','失落','害怕','安心','委屈','愧疚','希望'];
+function renderEmotionAsk(inner){
+  const box=document.createElement('div'); box.className='emotion-ask';
+  const lead=document.createElement('div'); lead.className='emotion-ask-lead';
+  lead.textContent='这次解读，你此刻的心情是？（只记你说的，不替你猜）';
+  box.appendChild(lead);
+  const chips=document.createElement('div'); chips.className='emotion-chips';
+  const chosen=[];
+  ARCHIVE_EMOTIONS.forEach(word=>{
+    const c=document.createElement('button'); c.type='button'; c.className='emotion-chip';
+    c.textContent=word;
+    c.onclick=()=>{ const i=chosen.indexOf(word); if(i>=0){chosen.splice(i,1);c.classList.remove('on');} else {chosen.push(word);c.classList.add('on');} };
+    chips.appendChild(c);
+  });
+  box.appendChild(chips);
+  const row=document.createElement('div'); row.className='emotion-ask-row';
+  const free=document.createElement('input'); free.type='text'; free.placeholder='也可以自己说一个词';
+  free.className='emotion-free';
+  const ok=document.createElement('button'); ok.type='button'; ok.className='primary'; ok.textContent='记下来';
+  const skip=document.createElement('button'); skip.type='button'; skip.textContent='跳过';
+  const done=info=>{ box.textContent=''; box.classList.add('is-done');
+    box.appendChild(Object.assign(document.createElement('div'),{className:'emotion-ask-done',
+      textContent: info && info.emotion_tags && info.emotion_tags.length
+        ? '已记进占卜档案：'+info.emotion_tags.join('、') : '好，这次先不记。'})); };
+  const submit=async()=>{
+    const typed=free.value.trim();
+    ok.disabled=true;
+    try{
+      const r=await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({op:'answer_emotion',session_id:sessionId,
+          emotion_tags:chosen.slice(), text:typed})});
+      const j=await r.json();
+      done(j.ok?j:null);
+    }catch(e){ ok.disabled=false; row.appendChild(Object.assign(document.createElement('span'),
+      {className:'emotion-ask-err',textContent:'没记上，稍后再试'})); }
+  };
+  ok.onclick=submit;
+  free.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
+  skip.onclick=()=>{ box.textContent=''; box.classList.add('is-done');
+    box.appendChild(Object.assign(document.createElement('div'),{className:'emotion-ask-done',
+      textContent:'好，这次先不记。'})); };
+  row.append(free,ok,skip); box.appendChild(row);
+  inner.appendChild(box);
+  chat.scrollTop=chat.scrollHeight;
+}
+
 async function send(textOverride){
   if(streaming) return;
   stopSpeech();
@@ -1360,7 +1409,7 @@ async function send(textOverride){
   stopped = false;
   abortCtl = new AbortController();
   $('stopBtn').hidden = false;
-  let full='', lastCards=null, safetyKind=null, usageInfo=null;
+  let full='', lastCards=null, safetyKind=null, usageInfo=null, emotionAsk=false;
 
   // 打字机队列：SSE 事件按到达顺序入队，再依次演出。抽牌轮会先收到
   // meditate（默念引导语）→ cards（翻牌）→ token（提问），于是形成
@@ -1505,6 +1554,7 @@ async function send(textOverride){
           if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); }
           if(obj.budget){ updateUsageChip({total: obj.budget.used}, obj.budget.limit); }
           if(obj.usage){ usageInfo=obj.usage; }
+          if(obj.emotion_ask){ emotionAsk=true; }
           if(obj.token){ enqueue(obj.token); }
           if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
           chat.scrollTop=chat.scrollHeight;
@@ -1536,6 +1586,8 @@ async function send(textOverride){
       '（合计 '+(usageInfo.total||0)+'）';
     inner.appendChild(ul);
   }
+  // 解读完成后请来访者亲口说心情，答复后才落档案（Olivia 不猜、不代选）
+  if(emotionAsk && !safetyKind && !stopped){ renderEmotionAsk(inner); }
   // 每条回复都能朗读、都能存成图；完全空回复（比如刚发出就停）不给按钮
   if(full){
     const acts=document.createElement('div'); acts.className='msg-acts';
@@ -1731,8 +1783,89 @@ async function loadCare(silent){
   const badge = $('careBadge');
   if(badge){ badge.hidden = unread===0; badge.textContent = unread; }
   $('careUnread').hidden = unread===0; $('careUnread').textContent = unread;
-  renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
+  renderGoals(); renderTasks(); renderOutbox(); renderWatchers(); renderWatchLog();
   if(!silent) $('careStatus').className='status';
+}
+// ---------- 目标 · 下一步（用户自己定方向；Olivia 不替你推进） ----------
+const GOAL_STATUS_LABEL = {active:'进行中',paused:'暂停',done:'已完成',dropped:'已放下'};
+function renderGoals(){
+  const list=$('goalList'); if(!list) return; list.innerHTML='';
+  const goals=(careData&&careData.goals)||[];
+  if(!goals.length){ list.innerHTML='<div class="mem-empty">还没有目标。新建一个你正在推进的事，Olivia 回访时会带着它。</div>'; return; }
+  goals.forEach(g=>{
+    const row=document.createElement('div'); row.className='care-row'; row.dataset.gid=g.id;
+    const tdiv=document.createElement('div'); tdiv.className='t';
+    tdiv.textContent=(GOAL_STATUS_LABEL[g.status]||g.status)+'　'+g.title;
+    const sdiv=document.createElement('div'); sdiv.className='s';
+    if(g.next_step){
+      const tag = g.next_source==='suggested' ? '〔Olivia 建议 · 待你确认〕' : '〔你定的〕';
+      sdiv.textContent='下一步：'+g.next_step+'　'+tag;
+    } else {
+      sdiv.textContent='下一步：还没定';
+    }
+    const acts=document.createElement('div'); acts.className='acts'; acts.style.cssText='margin-top:6px;flex-wrap:wrap';
+    const mk=(label,op,extra)=>{ const b=document.createElement('button'); b.textContent=label;
+      b.onclick=async()=>{ await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(Object.assign({op,id:g.id},extra||{}))}); await loadCare(true); }; return b; };
+    // 下一步的编辑与完成确认只由本人在这里操作；MCP / 模型无权调用 confirm_step。
+    const stepIn=document.createElement('input'); stepIn.className='goal-step-input';
+    stepIn.placeholder='写下一步（你自己定）'; stepIn.style.flex='1 1 12em';
+    const setBtn=document.createElement('button'); setBtn.textContent='设为下一步';
+    setBtn.onclick=async()=>{ const v=stepIn.value.trim(); if(!v){alert('先写下一步');return;}
+      await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({op:'set_next',id:g.id,text:v,source:'user'})}); await loadCare(true); };
+    const sugBtn=document.createElement('button'); sugBtn.textContent='记为建议';
+    sugBtn.title='由 Olivia 提出、等你点头的下一步';
+    sugBtn.onclick=async()=>{ const v=stepIn.value.trim(); if(!v){alert('先写建议内容');return;}
+      await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({op:'set_next',id:g.id,text:v,source:'suggested'})}); await loadCare(true); };
+    acts.appendChild(stepIn); acts.appendChild(setBtn); acts.appendChild(sugBtn);
+    if(g.next_step){
+      const conf=document.createElement('button'); conf.textContent='✓ 这一步做到了';
+      conf.title='只有你能确认；确认后记入完成历史';
+      conf.onclick=async()=>{ await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({op:'confirm_step',id:g.id})}); await loadCare(true); };
+      acts.appendChild(conf);
+    }
+    const statusSel=document.createElement('select'); statusSel.className='goal-status-select';
+    Object.keys(GOAL_STATUS_LABEL).forEach(k=>{ const o=document.createElement('option'); o.value=k;
+      o.textContent=GOAL_STATUS_LABEL[k]; if(k===g.status)o.selected=true; statusSel.appendChild(o); });
+    statusSel.onchange=async()=>{ await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({op:'update',id:g.id,data:{status:statusSel.value}})}); await loadCare(true); };
+    acts.appendChild(statusSel);
+    acts.appendChild(mk('删除','delete'));
+    row.appendChild(tdiv);
+    if(g.note){ const ndiv=document.createElement('div'); ndiv.className='c'; ndiv.textContent=g.note; row.appendChild(ndiv); }
+    row.appendChild(sdiv); row.appendChild(acts);
+    // 已完成步骤历史（最近 3 条）
+    if(g.steps&&g.steps.length){
+      const hd=document.createElement('div'); hd.className='c';
+      hd.textContent='已完成：'+g.steps.slice(0,3).map(s=>s.text).join('、');
+      row.appendChild(hd);
+    }
+    list.appendChild(row);
+  });
+}
+// ---------- 占卜档案（按用户 / 主题检索） ----------
+async function searchArchive(){
+  const box=$('arcList'); if(!box) return;
+  const u=($('arcUser').value||'').trim(), t=($('arcTopic').value||'').trim();
+  const q=new URLSearchParams(); if(u)q.set('user',u); if(t)q.set('query',t);
+  try{
+    const r=await fetch('/api/archive?'+q.toString()); const d=await r.json();
+    const recs=d.records||[]; box.innerHTML='';
+    if(!recs.length){ box.innerHTML='<div class="mem-empty">没有匹配的档案。</div>'; return; }
+    recs.forEach(rec=>{
+      const row=document.createElement('div'); row.className='care-row';
+      const tdiv=document.createElement('div'); tdiv.className='t';
+      tdiv.textContent=(rec.created_at||'')+'　'+(rec.user||'默认');
+      const sdiv=document.createElement('div'); sdiv.className='s';
+      sdiv.textContent='【'+(rec.spread||'未注明')+'】'+(rec.question||'');
+      const cdiv=document.createElement('div'); cdiv.className='c';
+      cdiv.textContent=(rec.points||'')+((rec.emotion_tags&&rec.emotion_tags.length)?'　情绪：'+rec.emotion_tags.join('、'):'');
+      row.appendChild(tdiv); row.appendChild(sdiv); row.appendChild(cdiv); box.appendChild(row);
+    });
+  }catch(e){ box.textContent=(e&&e.message)||String(e); }
 }
 function renderTasks(){
   const list = $('taskList'); list.innerHTML='';
@@ -1767,6 +1900,11 @@ function renderOutbox(){
     const tdiv=document.createElement('div'); tdiv.className='t';
     tdiv.textContent=(m.read?'':'● ')+'Olivia　'+m.created_at;
     const cdiv=document.createElement('div'); cdiv.className='c'; cdiv.textContent=m.content;
+    if(m.goals&&m.goals.length){
+      const gd=document.createElement('div'); gd.className='c';
+      gd.textContent='关联目标：'+m.goals.join('、')+'（决定仍在你）';
+      cdiv.appendChild(gd);
+    }
     const acts=document.createElement('div'); acts.className='acts';
     if(!m.read){ const rb=document.createElement('button'); rb.textContent='标为已读';
       rb.onclick=async()=>{ await fetch('/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1936,6 +2074,19 @@ $('outboxReadBtn').onclick = async () => {
     body:JSON.stringify({op:'mark_read',all:true})});
   await loadCare(true);
 };
+$('goalAddBtn') && ($('goalAddBtn').onclick = async () => {
+  const title=($('goalTitle').value||'').trim();
+  if(!title){ alert('先写一个目标名称'); return; }
+  const r=await fetch('/api/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({op:'add',title,note:($('goalNote').value||'').trim()})});
+  const d=await r.json();
+  if(d.ok){ $('goalTitle').value=''; $('goalNote').value=''; }
+  await loadCare(true);
+  $('careStatus').className=d.ok?'status ok':'status err';
+  $('careStatus').textContent=d.ok?'目标已建，下一步请你自己定':'新建失败：'+(d.error||'');
+});
+$('arcSearchBtn') && ($('arcSearchBtn').onclick=searchArchive);
+['arcUser','arcTopic'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') searchArchive(); }); });
 
 /* ---------- 图片附件 ---------- */
 function dataURL(file){

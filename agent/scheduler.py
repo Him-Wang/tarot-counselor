@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 import llm
 import memory
 import watchers
+import goals
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -241,7 +242,14 @@ def list_outbox(limit=50, unread_only=False):
         else:
             rows = conn.execute(
                 "SELECT * FROM messages ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            tid = d.get("task_id")
+            d["goals"] = [g["title"] for g in goals.goals_for("task", tid)
+                          if g.get("status") in ("active", "paused")] if tid else []
+            out.append(d)
+        return out
     finally:
         conn.close()
 
@@ -395,8 +403,12 @@ def run_due_tasks(cfg_loader):
                 mem_ctx = memory.context(task["intent"])
                 system = load_persona_short()
                 system += "\n\n你是主动关怀助手。根据下面的意图，写一条简短、温暖、自然的中文消息（1-3 句），像朋友发来的关心，不要机械、不要问太多问题、不要使用表情符号。只输出消息正文。"
+                system += "\n\n【边界】你可以温和地回访他自己的目标与下一步，但绝不替他决定、不擅自把建议当成已确认、不催促、不替他推进状态。"
                 if mem_ctx:
                     system += "\n\n" + mem_ctx
+                goals_ctx = goals.summary_for_prompt()
+                if goals_ctx:
+                    system += "\n\n" + goals_ctx
                 user = "主动关怀意图：" + task["intent"]
                 content = (llm.complete(
                     [{"role": "system", "content": system},
@@ -418,7 +430,10 @@ def run_due_tasks(cfg_loader):
             conn.close()
         if task["toast"]:
             _fire_toast("Olivia · " + task["name"], content)
-        fired.append({"task_id": task["id"], "name": task["name"], "content": content})
+        linked = [g["title"] for g in goals.goals_for("task", task["id"])
+                  if g.get("status") in ("active", "paused")]
+        fired.append({"task_id": task["id"], "name": task["name"], "content": content,
+                      "goals": linked})
     return fired
 
 
@@ -493,8 +508,10 @@ def run_watcher_checks(force=False):
         watchers.log_event(w, True, summary, message)
         if w.get("toast"):
             _fire_toast("Olivia · " + w.get("name", "关注"), message)
+        linked = [g["title"] for g in goals.goals_for("watcher", w["id"])
+                  if g.get("status") in ("active", "paused")]
         fired.append({"watcher_id": w["id"], "name": w.get("name"),
-                      "summary": summary, "content": message})
+                      "summary": summary, "content": message, "goals": linked})
     return fired
 
 

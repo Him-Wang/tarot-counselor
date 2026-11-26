@@ -114,6 +114,10 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 **定时与盯事**（`scheduler.py` / `watchers.py`，在「关怀」面板）：到点写关怀进收件箱并弹 Windows 通知；安静时段默认 22:00–08:00，总开关默认关闭。盯事支持网页 / RSS / JSON / 天气，规则有 contains、regex、数值阈值、变了、有新条目；首次只建基线，不会一上来就误报。
 
+**目标—状态—下一步**（`goals.py`）：关怀面板里可以记下你正在推进的目标（进行中 / 暂停 / 已完成 / 已放下）和下一步。下一步分「你自己定的」和「Olivia 提的建议」——建议只有你点头才算数。定时任务和盯事可以关联到目标，到点/命中时的主动汇报会带上关联目标。Olivia 只会在对话与关怀里温和回访这些目标，**不替你决定、不擅自推进状态**；「确认做到」「改状态」只能你在界面上做。
+
+**占卜档案**（`archive.py`）：每次解读完成后 Olivia 会问一句「现在的心情」——你点选情绪 chip 或自己打一个词，答复后才追加一条 JSON（时间、问题、牌阵、解读要点、情绪标签、牌面）；没答就暂不记。可在关怀面板按用户 / 主题 / 关键词回看。情绪标签只记你亲口说过的词，不猜测、不代选；危机内容不入库。档案只存本机 `agent/data/archive/`。
+
 **视觉（可选）**：填一个 OpenAI 兼容 VLM 的 key，图片先被转成客观文字描述，再作为线索交给主模型。主模型始终是纯文本，不假装自己看见了。
 
 ---
@@ -142,7 +146,9 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 ## 给别的程序用：MCP
 
-`agent/mcp_server.py` 是一个零依赖的 MCP stdio server，只读知识库并本地抽牌，不联网、不碰你的记忆与 key。
+`agent/mcp_server.py` 是一个零依赖的 MCP stdio server，默认只读知识库并本地抽牌，不联网、不碰你的记忆与 key。
+
+有限写入是**显式 opt-in**：设置环境变量 `OLIVIA_MCP_WRITES=1` 才开放，白名单只有 `save_memory` / `schedule_reminder` / `goal_add` / `goal_suggest_step` / `archive_append`——都是「新增 / 提建议」，**没有**删除、清空、确认、推进状态工具。也就是说另一个 AI 客户端无权替你拍板，这守住 Olivia「不替你决定」的底线。不设环境变量时行为和以前完全一样（只读）。
 
 ```json
 {
@@ -161,6 +167,10 @@ Olivia 由三样东西组成，缺一样都不成立：
 | `lookup_card` | 单张韦特牌意（正位 / 逆位 / 两者） |
 | `search_knowledge` | 解牌方法、牌间关系、共情式倾听、伦理与转介 |
 | `list_spreads` | 39 个牌阵的名称与位置说明 |
+| `list_goals`（只读） | 目标、状态与下一步（区分自己定的 / 待确认的建议） |
+| `search_archive`（只读） | 按用户 / 主题 / 关键词检索占卜档案 |
+
+开启 `OLIVIA_MCP_WRITES=1` 后追加：`save_memory`、`schedule_reminder`、`goal_add`、`goal_suggest_step`（建议强制标记 suggested）、`archive_append`。
 
 自检：`python agent/mcp_server.py --selftest`。
 
@@ -178,8 +188,8 @@ Olivia 由三样东西组成，缺一样都不成立：
 零第三方依赖，不碰真实模型 API，没 key 也能跑：
 
 ```bash
-python tests/test_whitebox.py     # 125 项：源码结构、纯函数、协议转换、牌阵、配对/加密/迁移/MCP
-python tests/test_blackbox.py     # 57 项：独立端口起真实服务，发 HTTP 请求
+python tests/test_whitebox.py     # 173 项：源码结构、纯函数、协议转换、牌阵、配对/加密/迁移/MCP/目标/档案
+python tests/test_blackbox.py     # 75 项：独立端口起真实服务，发 HTTP 请求
 ```
 
 黑盒覆盖：危机请求不发牌 / 不调工具 / 先给资源；抽牌不放回；无 key 时解读轮标 offline 且不伪装 AI；历史里的危机残留不二次报警；牌图可访问、目录穿越被拒；`AGENT_HOST=0.0.0.0` 时未配对 401、错码限流、对码后 Cookie 放行。

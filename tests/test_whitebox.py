@@ -14,7 +14,9 @@
   · secret_store.py API Key 加密落盘与解密
   · db.py       schema 版本迁移幂等
   · backup.py   导出结构、拒收非法文件、合并导入计数
-  · mcp_server.py JSON-RPC 握手、工具调用、错误码、stdio 循环
+  · mcp_server.py JSON-RPC 握手、工具调用、错误码、stdio 循环、写入 opt-in 白名单
+   · goals.py    目标—状态—下一步 CRUD、建议来源、确认边界、任务/关注关联
+   · archive.py  占卜档案追加/按用户主题检索/危机内容拒收
 
 运行： python tests/test_whitebox.py
 """
@@ -241,6 +243,12 @@ check("解读轮只读工具白名单",
       == ["lookup_card", "search_knowledge"])
 check("解读轮只放开只读工具",
       "tools.READ_TOOLS" in server_src and "tools.TOOL_GUIDE_READ" in server_src)
+# 占卜档案自动归档：解读完成只排队问情绪，答复后才落库；Olivia 不代选
+check("解读轮完成后排队入档", "reading_round and pending_result is not None" in server_src)
+check("入档前先问情绪", 'emit({"emotion_ask": True})' in server_src)
+check("情绪答复才写档案", 'op == "answer_emotion"' in server_src)
+check("情绪只记用户说的词", "e in str(body.get(\"text\") or body.get(\"message\") or \"\")" in server_src)
+check("未得答复不入档", "_pending_archive.pop(sid, None)" in server_src)
 
 
 # ------------------------------------------------------------------ auth
@@ -435,9 +443,22 @@ check("initialize 返回协议版本",
 check("initialize 声明 tools 能力", "tools" in _init["result"]["capabilities"])
 _listed = mcp.handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 _names = [t["name"] for t in _listed["result"]["tools"]]
-check("tools/list 暴露四个工具",
-      _names == ["draw_cards", "lookup_card", "search_knowledge", "list_spreads"],
+check("tools/list 暴露六个只读工具（默认无写入）",
+      _names == ["draw_cards", "lookup_card", "search_knowledge", "list_spreads",
+                 "list_goals", "search_archive"],
       repr(_names))
+check("默认不暴露写入工具",
+      not mcp.WRITES_ENABLED and "goal_add" not in _names
+      and "confirm_step" not in _names, repr(_names))
+check("写入白名单无确认/推进/删除工具",
+      not any(x in mcp.WRITE_ALLOWLIST for x in
+              ("confirm_step", "update_goal", "delete_goal", "clear", "delete")))
+_gated = mcp.call_tool("goal_add", {"title": "x"})
+check("未开启时写入工具被拒",
+      _gated.get("ok") is False and "OLIVIA_MCP_WRITES" in _gated.get("reason", ""),
+      repr(_gated))
+check("未开启时调用写工具仍可达（不会 unknown tool）",
+      "unknown tool" not in _gated.get("reason", ""), repr(_gated))
 _draw = mcp.handle_message({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                             "params": {"name": "draw_cards",
                                        "arguments": {"spread": "三张", "seed": 7}}})
@@ -462,6 +483,15 @@ _spreads = mcp.handle_message({"jsonrpc": "2.0", "id": 7, "method": "tools/call"
                                "params": {"name": "list_spreads", "arguments": {}}})
 check("MCP 牌阵数 >= 39",
       len(json.loads(_spreads["result"]["content"][0]["text"])["spreads"]) >= 39)
+_lg = mcp.handle_message({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
+                          "params": {"name": "list_goals", "arguments": {}}})
+check("MCP list_goals 可读",
+      json.loads(_lg["result"]["content"][0]["text"]).get("ok") is True)
+_sa = mcp.handle_message({"jsonrpc": "2.0", "id": 11, "method": "tools/call",
+                          "params": {"name": "search_archive",
+                                     "arguments": {"query": "不存在的词xyz"}}})
+check("MCP search_archive 可读",
+      json.loads(_sa["result"]["content"][0]["text"]).get("ok") is True)
 check("未知方法返回 -32601",
       mcp.handle_message({"jsonrpc": "2.0", "id": 8,
                           "method": "nope"})["error"]["code"] == -32601)
@@ -477,6 +507,111 @@ _lines = [json.loads(l) for l in _stdout.getvalue().strip().splitlines()]
 check("stdio 循环处理 ping 与坏行",
       len(_lines) == 2 and _lines[0].get("result") == {}
       and _lines[1]["error"]["code"] == -32700, repr(_lines))
+
+
+# ---------------------------------------------------------------- goals
+section("goals.py 目标—状态—下一步")
+goals = importlib.import_module("goals")
+_goals_tmp = tempfile.mkdtemp(prefix="olivia-goals-")
+_orig_db_path = goals.DB_PATH
+_orig_data_dir = goals.DATA_DIR
+goals.DB_PATH = os.path.join(_goals_tmp, "goals.db")
+goals.DATA_DIR = _goals_tmp
+
+_g1 = goals.add_goal("拿到心理咨询证书", note="明年目标")
+check("add_goal 返回 id", bool(_g1), repr(_g1))
+check("新目标状态默认 active",
+      goals.get_goal(_g1)["status"] == "active")
+check("空标题不建目标", goals.add_goal("   ") is None)
+
+goals.set_next_step(_g1, "报名基础课程", source="suggested")
+_g = goals.get_goal(_g1)
+check("下一步来源 suggested 被保留", _g["next_source"] == "suggested", repr(_g))
+goals.set_next_step(_g1, "本周先查好报名条件", source="user")
+check("下一步来源 user 被保留",
+      goals.get_goal(_g1)["next_source"] == "user")
+# 非法来源被强制归一成 user
+goals.set_next_step(_g1, "自己定一步", source="hacker")
+check("非法来源归一为 user",
+      goals.get_goal(_g1)["next_source"] == "user")
+
+_summary = goals.summary_for_prompt()
+check("目标摘要含标题", "拿到心理咨询证书" in _summary, repr(_summary))
+check("目标摘要标注来源", "你自己定下的下一步" in _summary, repr(_summary))
+
+# 关联 task / watcher
+goals.link(_g1, "task", 12)
+goals.link(_g1, "watcher", 7)
+check("link 到 task 生效",
+      any(l["kind"] == "task" and l["ref_id"] == 12
+          for l in goals.list_goals()[0]["links"]))
+check("goals_for(watcher) 命中",
+      any(g["id"] == _g1 for g in goals.goals_for("watcher", 7)))
+check("非法 link kind 被拒", not goals.link(_g1, "bogus", 1))
+goals.unlink(_g1, "watcher", 7)
+check("unlink 生效", not goals.goals_for("watcher", 7))
+
+# 确认边界：confirm_step 把下一步写入完成历史并清空
+goals.set_next_step(_g1, "听完第一节课", source="suggested")
+check("confirm_step 返回 True", goals.confirm_step(_g1))
+_g = goals.get_goal(_g1)
+check("确认后下一步清空", _g["next_step"] == "" and _g["next_source"] == "", repr(_g))
+check("确认后进入完成步骤历史",
+      any(s["text"] == "听完第一节课"
+          for s in goals.list_goals()[0]["steps"]))
+check("空下一步 confirm 返回 False", not goals.confirm_step(_g1))
+
+goals.update_goal(_g1, {"status": "done"})
+check("update_goal 改状态", goals.get_goal(_g1)["status"] == "done")
+check("摘要只含 active/paused 目标", "拿到心理咨询证书" not in goals.summary_for_prompt())
+
+_g2 = goals.add_goal("另一目标")
+goals.delete_goal(_g1)
+check("delete_goal 移除目标", goals.get_goal(_g1) is None)
+check("删除后级联清理 steps/links",
+      all(g["id"] != _g1 for g in goals.list_goals()))
+
+goals.DB_PATH = _orig_db_path
+goals.DATA_DIR = _orig_data_dir
+shutil.rmtree(_goals_tmp, ignore_errors=True)
+
+
+# -------------------------------------------------------------- archive
+section("archive.py 占卜档案")
+archive = importlib.import_module("archive")
+_arc_tmp = tempfile.mkdtemp(prefix="olivia-archive-")
+_orig_arc_dir = archive.ARCHIVE_DIR
+archive.ARCHIVE_DIR = _arc_tmp
+
+_aid = archive.append("小林", "工作要不要跳槽", "三张", "牌面提示先看清自己的需求",
+                      emotion_tags=["迷茫", "焦虑", "自定义情绪"],
+                      cards=["愚者", "圣杯二", "宝剑三"])
+check("append 返回 id", bool(_aid), repr(_aid))
+_a = archive.search(user="小林")[0]
+check("档案含时间", bool(_a.get("created_at")))
+check("档案含问题/牌阵/要点",
+      _a["question"] == "工作要不要跳槽" and _a["spread"] == "三张"
+      and "需求" in _a["points"])
+check("档案含牌面", len(_a["cards"]) == 3)
+check("情绪标签含已知词", "迷茫" in _a["emotion_tags"] and "焦虑" in _a["emotion_tags"])
+check("自定义情绪词被保留", "自定义情绪" in _a["emotion_tags"], repr(_a["emotion_tags"]))
+
+archive.append("小林", "感情走向", "凯尔特十字", "沟通是关键", emotion_tags=["期待"])
+archive.append("阿明", "考试结果", "单张", "专注当下", emotion_tags=["平静"])
+check("按用户检索只返回该用户",
+      all(r["user"] == "小林" for r in archive.by_user("小林", limit=10))
+      and len(archive.by_user("小林", limit=10)) == 2)
+check("按主题检索命中",
+      any(r["question"] == "感情走向" for r in archive.by_topic("沟通", limit=10)))
+check("全文检索命中", len(archive.search(query="考试", limit=10)) == 1)
+check("危机问题不入库（安全闸门）",
+      archive.append("小林", "我想伤害自己", "单张", "解读") is None
+      and len(archive.search(query="伤害自己", limit=10)) == 0)
+check("stats 统计用户数", archive.stats() == {"total": 3, "users": 2}, repr(archive.stats()))
+check("clear(user) 只清该用户", archive.clear("小林") and archive.stats()["total"] == 1)
+
+archive.ARCHIVE_DIR = _orig_arc_dir
+shutil.rmtree(_arc_tmp, ignore_errors=True)
 
 
 print("\n" + "=" * 46)

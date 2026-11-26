@@ -263,6 +263,73 @@ try:
     check("history 残留危机不会二次报警",
           not [e for e in evs5 if "safety" in e and str(e["safety"]) == "self"])
 
+    # -------------------------------------------- 目标 / 档案 / 关怀面板 API
+    status, _, body = http_get("/api/goals")
+    _gd = json.loads(body.decode("utf-8"))
+    check("GET /api/goals 返回 goals+stats",
+          status == 200 and "goals" in _gd and "stats" in _gd, str(_gd)[:120])
+
+    _gid = None
+    try:
+        status, raw = http_post_json("/api/goals", {
+            "op": "add", "title": "黑盒测试目标", "note": "自动化"})
+        _gd2 = json.loads(raw.decode("utf-8"))
+        _gid = next((g["id"] for g in _gd2["goals"]
+                     if g["title"] == "黑盒测试目标"), None)
+        check("POST /api/goals add 生效", status == 200 and bool(_gid), str(_gd2)[:160])
+        status, raw = http_post_json("/api/goals", {
+            "op": "set_next", "id": _gid, "text": "先查资料", "source": "suggested"})
+        _gd3 = json.loads(raw.decode("utf-8"))
+        _g = next((g for g in _gd3["goals"] if g["id"] == _gid), {})
+        check("set_next 标记 suggested", _g.get("next_source") == "suggested", str(_g)[:160])
+        status, raw = http_post_json("/api/goals", {
+            "op": "link", "id": _gid, "kind": "task", "ref_id": 99})
+        check("link task 生效", json.loads(raw.decode("utf-8"))["ok"] is True)
+        status, raw = http_post_json("/api/goals", {
+            "op": "confirm_step", "id": _gid})
+        _gd4 = json.loads(raw.decode("utf-8"))
+        _g = next((g for g in _gd4["goals"] if g["id"] == _gid), {})
+        check("confirm_step 由 UI 确认生效",
+              _g.get("next_step") == "" and len(_g.get("steps", [])) >= 1,
+              str(_g)[:160])
+        http_post_json("/api/goals", {"op": "delete", "id": _gid})
+        _gid = None
+    except Exception as e:
+        check("目标 API 无异常", False, str(e))
+
+    status, _, body = http_get("/api/archive?query=zzz_no_such_keyword")
+    _ad = json.loads(body.decode("utf-8"))
+    check("GET /api/archive 返回 records+stats",
+          status == 200 and "records" in _ad and "stats" in _ad, str(_ad)[:120])
+    try:
+        status, raw = http_post_json("/api/archive", {
+            "op": "add", "user": "黑盒", "question": "测试问题",
+            "spread": "单张", "points": "测试要点", "emotion_tags": ["平静"]})
+        _ad2 = json.loads(raw.decode("utf-8"))
+        check("POST /api/archive add 生效",
+              status == 200 and any(r["question"] == "测试问题"
+                                    for r in _ad2["records"]), str(_ad2)[:160])
+        http_post_json("/api/archive", {"op": "clear", "user": "黑盒"})
+    except Exception as e:
+        check("档案 API 无异常", False, str(e))
+
+    status, _, body = http_get("/api/schedule")
+    _sd = json.loads(body.decode("utf-8"))
+    check("GET /api/schedule 含 goals/goal_stats",
+          status == 200 and "goals" in _sd and "goal_stats" in _sd, str(_sd)[:120])
+
+    # 情绪答复归档：没有排队解读时应明确拒绝，不静默写入
+    try:
+        status, raw = http_post_json("/api/archive", {
+            "op": "answer_emotion", "session_id": "bb-no-pending",
+            "emotion_tags": ["平静"]})
+        # urllib 对 400 会抛 HTTPError，这里期望被拒
+        check("answer_emotion 无待归档记录时拒绝", False, "不该成功")
+    except urllib.error.HTTPError as e:
+        check("answer_emotion 无待归档记录时拒绝", e.code == 400, str(e.code))
+    except Exception as e:
+        check("answer_emotion 无待归档记录时拒绝", False, str(e))
+
     # -------------------------------------------------------- 静态牌图
     first_card = None
     if all_cards and all_cards[-1].get("items"):
