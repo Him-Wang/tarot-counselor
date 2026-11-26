@@ -242,8 +242,19 @@ function newSession(){
     typeGreeting(bub, uiText('新的一页。这次，你想从哪里说起？', 'A new page. Where would you like to start?'), 220);
   }
 }
+/* 一页里有没有真的聊过东西。历史遗留的「未命名的一页 · 0 条」是早期
+   persistSession() 不看内容就写盘留下的，这里按内容判定，顺手清掉。 */
+function shelfHasContent(s){
+  const h = (s && s.history) || [];
+  return h.some(m => m && (String(m.content || '').trim() || m.image));
+}
+
 function renderShelf(){
-  const shelf = loadShelf().slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const all = loadShelf();
+  // 当前正在看的那一页即使还是空的也留着，否则一打开会话簿就把自己删了
+  const kept = all.filter(s => s.id === sessionId || shelfHasContent(s));
+  if(kept.length !== all.length) saveShelf(kept);
+  const shelf = kept.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const list = $('shelfList');
   list.innerHTML = '';
   if(!shelf.length){ list.textContent = '（还没有保存的会话，聊几句就有了。）'; return; }
