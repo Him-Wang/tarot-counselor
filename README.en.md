@@ -26,7 +26,7 @@ She only begins reading after you say what you actually want to ask.
 
 Olivia is made of three things, and none of them is optional:
 
-1. **A real deck.** 78 public-domain 1909 RWS scans, 39 traditional spreads, drawn without replacement, with a reproduction seed every time.
+1. **A real deck.** 78 public-domain 1909 RWS scans, 39 traditional spreads, drawn without replacement from the OS kernel entropy (CSPRNG) every time — unpredictable and non-reproducible.
 2. **A real method.** Waite meanings, position meanings, card-to-card relations, reversal reading and court-card perspectives all live in checkable files — not in whatever the model improvises.
 3. **An agent that holds back.** Nine tools — draw, look up, search, remember, take notes, remind — are chosen by the model. When to stop reading and offer help is decided by server code.
 
@@ -95,11 +95,11 @@ All three protocols share the same agentic loop and tool calls. The key is writt
 
 ## Why she is trustworthy
 
-**The cards are not made up.** The 78 images are public-domain scans (`agent/cards/`, see `SOURCE.md`). In hand-pick mode the cards are the ones you chose yourself, placed in pick order, marked "manual" with no seed line. In random mode every draw carries a seed: same seed, same spread, same cards — you can reproduce it and check that she did not cherry-pick. The seed comes from system entropy (`os.urandom`), and sampling runs on an HMAC-SHA256 bit stream (CSPRNG) rather than a reversible MT19937.
+**The cards are not made up.** The 78 images are public-domain scans (`agent/cards/`, see `SOURCE.md`). There are two draw paths, and neither has a seed: in hand-pick mode the cards are the ones you chose yourself, placed in pick order, marked "manual"; in one-click random mode all cards are drawn from the OS kernel entropy (`random.SystemRandom()` / `os.urandom`). Upright/reversed orientation is generated fresh from kernel entropy at draw time. Every result is unpredictable and non-reproducible — there is no number that can replay a spread.
 
 **Time is real.** Every turn injects the current date and time, so "tonight before bed" or "tomorrow at seven" rests on actual time, not years from training data.
 
-**No key, no pretending.** When the model is unreachable, `agent/offline.py` composes the cards you already drew into text using position, traditional meaning and the seed, clearly labelled **【offline composition】not an AI reading**. She will not invent a reading to look useful.
+**No key, no pretending.** When the model is unreachable, `agent/offline.py` composes the cards you already drew into text using position and traditional meaning, clearly labelled **【offline composition】not an AI reading**. She will not invent a reading to look useful.
 
 **Memory has boundaries.** Crisis text never enters any memory table. Negations ("I will not kill myself") and dreams ("I dreamed someone was chasing me") are not misclassified as crises. Wrong memories can be deleted one by one or cleared in bulk.
 
@@ -113,7 +113,7 @@ A real agentic loop: the model decides whom to call, and the UI shows each step 
 
 | Tool | Purpose |
 |---|---|
-| `draw_cards` | Draw locally by spread, no replacement, seeded |
+| `draw_cards` | Draw locally by spread, no replacement, OS-entropy random |
 | `lookup_card` | Look up one card's upright / reversed Waite meaning |
 | `search_knowledge` | Search method, card relations, empathic listening, ethics and referral |
 | `save_memory` | Remember preferences, boundaries and explicit "please remember" |
@@ -171,7 +171,7 @@ Want to share a public demo? Use the [read-only `OLIVIA_DEMO=1` demo mode](docs/
 
 | Tool | Returns |
 |---|---|
-| `draw_cards` | Positions, orientation, traditional meanings, layout coordinates, seed |
+| `draw_cards` | Positions, orientation, traditional meanings, layout coordinates |
 | `lookup_card` | One card's Waite meaning (upright / reversed / both) |
 | `search_knowledge` | Method, card relations, empathic listening, ethics and referral |
 | `list_spreads` | Names and position notes of the 39 spreads |

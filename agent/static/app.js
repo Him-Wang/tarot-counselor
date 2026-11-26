@@ -1,5 +1,7 @@
 const $ = id => document.getElementById(id);
 const chat = $('chat'), input = $('input');
+// 最近一副牌：历史回看、牌桌问句、🎲 随机抽与 send() 共用同一份状态。
+let lastCards = null;
 
 /* 界面语言：静态文案由 i18n.js 负责，这里是脚本自己拼出来的状态文字 */
 const langEn = () => (localStorage.getItem('olivia.lang') || 'zh').toLowerCase().indexOf('en') === 0;
@@ -1051,29 +1053,12 @@ function renderPickStage(inner, bub, data){
         if(mini) mini.hidden = true;
       });
       pos = 0;
+      suppressUntil = 0;               // 洗牌后清掉上一次拖拽的点击抑制（L5）
       updateHint();
       layout();
       fan.classList.remove('just-shuffled');
       void fan.offsetWidth;            // 触发重排以便重放动画
       fan.classList.add('just-shuffled');
-    }
-
-    function reset(){
-      if(submitting) return;
-      picked.length = 0;
-      cards.forEach(c => {
-        c.classList.remove('picked');
-        c.disabled = false;
-        c.style.visibility = 'visible';
-        c.style.pointerEvents = 'auto';
-      });
-      slotEls.forEach(s => {
-        s.classList.remove('filled');
-        const mini = s.querySelector('.pick-mini');
-        if(mini) mini.hidden = true;
-      });
-      updateHint();
-      layout();
     }
 
     // 拖动翻牌堆；移动超过 8px 就当作拖动，不误抽一张
@@ -1119,10 +1104,14 @@ function renderPickStage(inner, bub, data){
       else if(e.key === 'Home'){ pos = 0; layout(); e.preventDefault(); }
       else if(e.key === 'End'){ pos = cards.length - vis; layout(); e.preventDefault(); }
       else if(e.key === 'Enter'){
-        // 选中当前正中（离视口中心最近）的一张可见牌
-        const center = cards[Math.round(pos + (vis - 1) / 2)];
-        if(center && !center.classList.contains('picked') && center.style.visibility !== 'hidden'){
-          pick(center);
+        // 抽当前键盘聚焦的那张牌（H2）；未聚焦具体牌时才退回到正中那张。
+        const focused = e.target && e.target.closest && e.target.closest('.pick-card');
+        const card = (focused && fan.contains(focused))
+          ? focused
+          : cards[Math.round(pos + (vis - 1) / 2)];
+        if(card && !card.classList.contains('picked') && !card.disabled &&
+           card.style.visibility !== 'hidden'){
+          pick(card);
         }
         e.preventDefault();
       }
@@ -1189,12 +1178,12 @@ function updateBoardQuestion(q){
   if(!node){
     node = document.createElement('p');
     node.className = 'b-question';
-    const seed = el.querySelector('.b-seed');
-    if(seed) seed.after(node);
+    const info = el.querySelector('.b-drawinfo');
+    if(info) info.after(node);
     else head.after(node);
   }
   node.innerHTML = '<span>你问</span>' + escHtml(q);
-  if(typeof lastCards !== 'undefined' && lastCards) lastCards.question = q;
+  if(lastCards) lastCards.question = q;
 }
 function renderBoard(data){
   const el = $('board');
@@ -1203,7 +1192,6 @@ function renderBoard(data){
   if(!items.length){ clearBoard(); return; }
   const extras = (data && data.extras) || [];
   const all = items.concat(extras);
-  const seed = data.seed == null ? '' : String(data.seed);
   const question = (data.question || '').trim();
   const circ = n => BOARD_CIRC[n-1] || (n + '.');
 
@@ -1242,10 +1230,8 @@ function renderBoard(data){
           (extras.length ? ' + 补 ' + extras.length : '') +
         '</div></div>' +
       (data.manual
-        ? '<p class="b-seed">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出（正逆位可用种子复现）</p>'
-        : (data.random
-          ? '<p class="b-seed">系统真随机（OS 内核熵）· 每次都不同、不可复现、无种子</p>'
-          : (seed ? '<p class="b-seed">种子 <b>' + escHtml(seed) + '</b> · 同种子、同牌阵可抽回同一副牌</p>' : ''))) +
+        ? '<p class="b-drawinfo">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出（正逆位由系统内核熵即时产生，不可复现）</p>'
+        : '<p class="b-drawinfo">系统真随机（OS 内核熵）· 每次都不同、不可复现</p>') +
       (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
       '<div class="b-cards">' + cardsHtml + '</div>' +
       '<div class="b-acts">' +
@@ -1277,7 +1263,7 @@ function renderBoard(data){
       else if(act === 'redraw') send('重抽这副牌');
       else if(act === 'extra') send('补一张牌');
       else if(act === 'random'){
-        // 真随机抽牌：服务端 OS 内核熵，非种子、不可复现。
+        // 真随机抽牌：服务端 OS 内核熵，不可复现。
         const spread = data.spread || '三张';
         try{
           const r = await fetch('/api/random-draw', {
@@ -1286,13 +1272,18 @@ function renderBoard(data){
           });
           const d = await r.json();
           if(!d || !d.ok) throw new Error((d && d.error) || '随机抽牌失败');
-          if(typeof lastCards !== 'undefined') lastCards = d.cards;
+          lastCards = d.cards;
           const oldWrap = document.querySelector('#chat .draw-wrap');
           if(oldWrap) oldWrap.remove();
           renderCards($('chat'), null, d.cards, {canExtra:false});
           renderBoard(d.cards);
         }catch(err){
-          send('重抽这副牌');   // 失败时退回对话流程里的常规随机抽牌
+          // 失败时如实提示，不假装成"重抽"（那只会弹出牌阵选择列表）。
+          // renderBoard 没有 bub 参数，用 addMsg 新起一条消息显示提示。
+          const {bub: tipBub} = addMsg('assistant',
+            '⚠ 随机抽牌失败：' + ((err && err.message) || err));
+          tipBub.classList.add('safety-line');
+          chat.scrollTop = chat.scrollHeight;
         }
       }
     });
@@ -1542,7 +1533,7 @@ async function send(textOverride){
   stopped = false;
   abortCtl = new AbortController();
   $('stopBtn').hidden = false;
-  let full='', lastCards=null, safetyKind=null, usageInfo=null, emotionAsk=false;
+  let full='', safetyKind=null, usageInfo=null, emotionAsk=false;
 
   // 打字机队列：SSE 事件按到达顺序入队，再依次演出。抽牌轮会先收到
   // meditate（默念引导语）→ cards（翻牌）→ token（提问），于是形成
@@ -2342,7 +2333,7 @@ $('visionSaveBtn').onclick=async()=>{
 /* ---------------------------------------------------------------------------
    分享图：把最后一副牌导出成 PNG（纯 Canvas，本地生成，不上传）。
    Olivia 的风格——深紫底 + 月光银字，牌是主角：牌图按牌阵网格摆放，
-   每张牌下标牌位 / 牌名 / 正逆位，页脚写牌阵、问题与复现种子。
+   每张牌下标牌位 / 牌名 / 正逆位，页脚写牌阵与问题。
    --------------------------------------------------------------------------- */
 function lastShareData(){
   for(let i = history.length - 1; i >= 0; i--){
@@ -2442,7 +2433,6 @@ async function exportShare(){
   g.beginPath(); g.moveTo(120, 1170); g.lineTo(W-120, 1170); g.stroke();
   g.fillStyle = '#9a86c0'; g.font = '18px "Noto Sans SC", sans-serif';
   g.fillText('牌意来自传统韦特体系 · 照见当下，不预言结果', W/2, 1216);
-  if(data.seed != null) g.fillText('复现种子 ' + data.seed, W/2, 1252);
   g.fillStyle = '#6f6191'; g.font = '16px "Noto Sans SC", sans-serif';
   g.fillText('Olivia · 本地生成', W/2, 1300);
 
@@ -2460,7 +2450,7 @@ $('shareBtn').onclick = exportShare;
    分享深链：把最后一副牌编进 ?reading=<token> 的 URL，别人打开是**只读**的。
    格式与 agent/share_link.py 完全一致（该文件同时接受这种 o1. 形式）：
      o1.<base64url(UTF-8 紧凑 JSON，无 padding)>
-   payload = {v:1, spread, question, seed,
+   payload = {v:1, spread, question,
               cards:[{name, orientation, position}, ...]}
    浏览器端没有 zlib，所以直接放明文 JSON；Python 端 decode 兼容明文与 o1z zlib 压缩形式。
    token 只放牌面文字，不放图片/解释，也不经过服务器：不写记忆、不调模型。
@@ -2489,7 +2479,6 @@ function encodeReading(data){
     v: 1,
     spread: String(data.spread || ''),
     question: String(data.question || ''),
-    seed: data.seed == null ? null : data.seed,
     cards: items.map(c => ({
       name: String(c.name || ''),
       orientation: String(c.orientation || ''),
@@ -2512,7 +2501,6 @@ function decodeReading(token){
       for(const k of ['name', 'orientation', 'position'])
         if(typeof c[k] !== 'string') return null;
     }
-    if(!(data.seed == null || typeof data.seed === 'number' || typeof data.seed === 'string')) return null;
     return data;
   }catch(e){ return null; }
 }
@@ -2585,8 +2573,7 @@ function mountShareViewer(data){
   meta.innerHTML =
     '<div>' + uiText('牌阵', 'Spread') + '：<b style="color:var(--text-2)">' + escHtml(data.spread || uiText('抽牌', 'Draw')) + '</b>' +
       ' · ' + data.cards.length + ' ' + uiText('张', 'cards') + '</div>' +
-    '<div>' + uiText('所问', 'Question') + '：' + escHtml(data.question || '—') + '</div>' +
-    (data.seed == null ? '' : '<div>' + uiText('复现种子', 'Seed') + '：' + escHtml(String(data.seed)) + '</div>');
+    '<div>' + uiText('所问', 'Question') + '：' + escHtml(data.question || '—') + '</div>';
   sheet.appendChild(meta);
 
   const grid = document.createElement('div');

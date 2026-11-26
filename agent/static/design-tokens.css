@@ -32,7 +32,7 @@
   --ok:            #7FAE8B;
   --danger:        #C97B6A;
 
-  /* 字体：中文衬线承担「牌」的重量，无衬线承担工具，等宽承担种子与轨迹 */
+  /* 字体：中文衬线承担「牌」的重量，无衬线承担工具，等宽承担代码与轨迹 */
   --font-serif: "Songti SC","Noto Serif SC","Source Han Serif SC","SimSun",Georgia,serif;
   --font-sans:  "PingFang SC","HarmonyOS Sans SC","MiSans","Microsoft YaHei",system-ui,-apple-system,sans-serif;
   --font-mono:  "SFMono-Regular",Consolas,"Liberation Mono","Courier New",monospace;

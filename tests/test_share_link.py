@@ -33,7 +33,6 @@ def sample():
         "v": 1,
         "spread": "三张",
         "question": "我今天该怎么和她说？",
-        "seed": 123456789012345,
         "cards": [
             {"name": "愚者", "orientation": "正位", "position": "过去"},
             {"name": "月亮", "orientation": "逆位", "position": "现在"},
@@ -54,7 +53,7 @@ def main():
     d = share_link.decode(tok)
     check("往返：牌阵一致", d and d["spread"] == p["spread"])
     check("往返：问题一致", d and d["question"] == p["question"])
-    check("往返：种子一致", d and d["seed"] == p["seed"])
+    check("往返：不含任何 seed 字段", d and "seed" not in d)
     check("往返：牌数一致", d and len(d["cards"]) == len(p["cards"]))
     check("往返：每张牌一致", d and all(
         a["name"] == b["name"] and a["orientation"] == b["orientation"]

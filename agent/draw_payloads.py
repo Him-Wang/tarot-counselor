@@ -12,7 +12,6 @@ def _cards_payload(result):
         "spread": spread,
         "spread_desc": result.get("spread_desc", ""),
         "question": result.get("question", ""),
-        "seed": result.get("seed"),
         "manual": bool(result.get("manual")),
         "random": bool(result.get("random_source")),
         "layout": result.get("layout") or spreads_mod.layout(spread),

@@ -66,7 +66,7 @@ python tests/test_share_link.py       # 分享深链，22 项
 | `agent/tools.py` | 9 个工具的定义、执行与界面摘要 |
 | `agent/spreads.py` | 39 个牌阵的定义、几何布局与目录输出 |
 | `agent/safety.py` | 中英文危机类别判定、可选二次检查与安全回应文案 |
-| `agent/offline.py` | 无可用模型时按牌位、牌意与种子做离线整理 |
+| `agent/offline.py` | 无可用模型时按牌位、牌意做离线整理 |
 | `agent/memory.py` | 四层本地记忆与每日 token 用量：画像、线索、对话、抽牌历史 |
 | `agent/knowledge.py` | 对 `knowledge/` 的中文二元组关键词检索与牌义直查 |
 | `agent/scheduler.py` | 定时关怀、每日一牌、收件箱与后台线程 |

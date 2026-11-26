@@ -191,8 +191,8 @@ try:
         names = [c.get("name") for c in items]
         check("抽牌不放回", len(names) == len(set(names)), str(names))
     check("抽牌轮不触发安全闸门", not [e for e in evs4 if "safety" in e])
-    check("chat 抽牌是真随机（无 seed、标记 random）",
-          all_cards and all_cards[-1].get("seed") is None and all_cards[-1].get("random") is True)
+    check("chat 抽牌是真随机（无 seed 字段、标记 random）",
+          all_cards and "seed" not in all_cards[-1] and all_cards[-1].get("random") is True)
 
     # ---------------------------------------------------- 一键真随机端点黑盒
     status, raw = http_post_json("/api/random-draw", {
@@ -202,7 +202,7 @@ try:
     check("随机抽牌端点成功", rand.get("ok"), str(rand)[:200])
     rand_items = (rand.get("cards") or {}).get("items") or []
     check("随机抽牌出 3 张", len(rand_items) == 3, str(len(rand_items)))
-    check("随机抽牌无 seed（不可复现）", (rand.get("cards") or {}).get("seed") is None)
+    check("随机抽牌无 seed 字段（不可复现）", "seed" not in (rand.get("cards") or {}))
     check("随机抽牌标记 random", (rand.get("cards") or {}).get("random") is True)
     status, raw2 = http_post_json("/api/random-draw", {
         "session_id": "bb-rand", "spread": "三张",
@@ -211,6 +211,17 @@ try:
     check("两次随机抽牌结果不同",
           [c.get("name") for c in rand_items] !=
           [c.get("name") for c in (rand2.get("cards") or {}).get("items") or []])
+
+    # 🎲 抽完后紧接着「补一张」应在这副牌上补成功（M1 回归）
+    # bb-rand 上一次抽牌已写入 _last_spreads；补牌后张数应为 4。
+    status, evs_rand_extra = post_chat("补一张牌：想看看被忽略的方面", session="bb-rand")
+    rand_read_cards = [e["cards"] for e in evs_rand_extra if e.get("cards", {}).get("items")]
+    # 原牌 3 张仍在 items，补牌单列在 extras（不替换原牌）
+    check("🎲 后补牌原牌仍是 3 张",
+          bool(rand_read_cards) and len(rand_read_cards[-1]["items"]) == 3,
+          str(len(rand_read_cards[-1]["items"]) if rand_read_cards else None))
+    check("🎲 后补牌带 extras",
+          bool(rand_read_cards) and len(rand_read_cards[-1].get("extras") or []) == 1)
 
     # ---------------------------------------------------- 手动选牌黑盒
     # 界面带 pick:true：先给牌阵舞台（不发牌），挑满后 /api/pick 落位，

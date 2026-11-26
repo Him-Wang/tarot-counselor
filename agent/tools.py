@@ -13,12 +13,9 @@ Design rules:
     the conversation as {"role":"tool"} messages for the next model turn.
 """
 
-import hashlib
-import hmac
 import json
 import os
 import random
-import secrets
 
 import knowledge
 import memory
@@ -309,58 +306,18 @@ READ_TOOLS = [t for t in TOOLS if t["function"]["name"] in READ_TOOL_NAMES]
 
 # ---- 抽牌随机源 ----
 # 软件拿不到物理真随机；能拿到的最强来源是内核 CSPRNG（os.urandom）。
-# 这里不再用 Mersenne Twister，而是把系统熵生成的种子展开成 HMAC-SHA256
-# 比特流：对外仍是「同种子同一副牌」，但输出不可由线性同余关系反推。
-_SEED_BITS = 53          # 53 位保证前端 JSON 解析不丢精度，且远大于原来的 31 位
-_SEED_LIMIT = 1 << _SEED_BITS
+# 两条抽牌路径（手选落位 / 一键真随机）的正逆位都由 random.SystemRandom()
+# 即时从内核熵产生：没有种子、不可复现、无可重放的数字。
 
 
-class _SeedStream(random.Random):
-    """种子 → HMAC-SHA256 计数器流（CSPRNG），替代 MT19937。
-
-    只覆写 getrandbits / random，sample() 的拒绝采样会自动走这里。
-    """
-
-    def __init__(self, seed):
-        super().__init__(0)  # 建立 Random 接口；MT 状态不再使用
-        self._key = hashlib.sha256(
-            b"olivia-draw-v2:" + str(seed).encode("utf-8")).digest()
-        self._counter = 0
-        self._buf = b""
-
-    def _take(self, n):
-        while len(self._buf) < n:
-            self._counter += 1
-            self._buf += hmac.new(
-                self._key, self._counter.to_bytes(8, "big"),
-                hashlib.sha256).digest()
-        chunk, self._buf = self._buf[:n], self._buf[n:]
-        return chunk
-
-    def getrandbits(self, k):
-        if k <= 0:
-            return 0
-        n = (k + 7) // 8
-        return int.from_bytes(self._take(n), "big") >> (n * 8 - k)
-
-    def random(self):
-        return self.getrandbits(53) / float(1 << 53)
-
-
-def _new_seed():
-    """由系统熵（os.urandom）生成一个新种子。"""
-    return secrets.randbelow(_SEED_LIMIT)
-
-
-def draw_cards(spread="三张", question="", seed=None, picks=None):
+def draw_cards(spread="三张", question="", picks=None):
     """手动选牌落位：只接受来访者亲手挑出的牌，不再自行随机抽牌。
 
     需要「一键真随机」请用 draw_cards_random()（OS 内核熵，每次不同、不可复现）。
 
     ``picks`` 是牌堆下标（0..77）的列表，按顺序落到牌阵的各个牌位。
-    手动选牌时不重抽、不替换，只把选中的牌原样铺开；正逆位由 seed 决定。
-    ``seed`` 只影响正逆位的产生：给同一个 seed（同一牌阵、同一组 picks）会得到
-    同一组正逆位，用于审计 / 回访。不指定 seed 时由系统熵生成 53 位种子。
+    手动选牌时不重抽、不替换，只把选中的牌原样铺开；正逆位由内核熵即时产生，
+    没有种子、不可复现。
     """
     spread = spread if spread in SPREADS else "三张"
     meta = spreads_mod.SPREAD_META.get(spread) or {}
@@ -381,13 +338,7 @@ def draw_cards(spread="三张", question="", seed=None, picks=None):
                 "reason": "手选需要 %d 张不重复的牌，实际只有 %d 张；"
                           "随机抽牌请使用 draw_cards_random()。" % (want, len(clean))}
 
-    if seed is None:
-        seed = _new_seed()
-    try:
-        seed = int(seed)
-    except (TypeError, ValueError):
-        seed = _new_seed()
-    rng = _SeedStream(seed)
+    rng = random.SystemRandom()          # 内核 CSPRNG，每次取新熵，不可复现
     indices = clean[:want]
     cards = []
     for (pos, pos_meaning), idx in zip(pos_pairs, indices):
@@ -409,7 +360,6 @@ def draw_cards(spread="三张", question="", seed=None, picks=None):
         "spread": spread,
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
-        "seed": seed,
         "manual": True,
         "layout": spreads_mod.layout(spread),
         "cards": cards,
@@ -422,11 +372,8 @@ def draw_cards(spread="三张", question="", seed=None, picks=None):
 def draw_cards_random(spread="三张", question=""):
     """一键真随机抽牌：每次都从操作系统内核熵重新采样，不可预测、不可复现。
 
-    与 draw_cards(seed=...) 的区别：
-      - draw_cards 是「同 seed 同牌」的可复现流，用于审计 / 回放 / 手选正逆位；
-      - 本函数走 random.SystemRandom()（底层 os.urandom，混入硬件熵），
-        每次调用都取新熵，结果不同、无法重放，也不输出可用于重放的 seed。
-
+    走 random.SystemRandom()（底层 os.urandom，混入硬件熵），每次调用都取新熵，
+    结果不同、无法重放，也不输出任何可用于复现的数字。
     不放回、正逆位各半、传统牌意随牌返回，规则与手选模式一致。
     """
     spread = spread if spread in SPREADS else "三张"
@@ -452,12 +399,11 @@ def draw_cards_random(spread="三张", question=""):
         "spread": spread,
         "spread_desc": meta.get("desc", ""),
         "question": question or "（来访者未明确说明）",
-        "seed": None,
         "manual": False,
         "random_source": "os.urandom / SystemRandom (CSPRNG，不可复现)",
         "layout": spreads_mod.layout(spread),
         "cards": cards,
-        "note": ("牌面由操作系统内核熵真随机产生：每次都不同、无法复现、不经过任何 seed。"
+        "note": ("牌面由操作系统内核熵真随机产生：每次都不同、无法复现、无任何可重放的数字。"
                  "不放回，正逆位各半。请依据每张牌随附的传统牌意与该牌位在问什么来解读，"
                  "不要自行编造或替换牌意。"),
     }
@@ -711,10 +657,8 @@ def summary(name, result):
                         for c in result["cards"][:3])
         more = "…" if len(result["cards"]) > 3 else ""
         total = len(result.get("cards") or [])
-        seed = result.get("seed")
         src = result.get("random_source")
-        tag = (" · 真随机" if src else
-               (" · 种子 %s" % seed if seed is not None else ""))
+        tag = " · 真随机" if src else ""
         return "抽牌：%s · %d 张（%s）%s%s" % (
             result["spread"], total, cards, more, tag)
     if name == "search_knowledge":

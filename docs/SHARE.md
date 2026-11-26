@@ -4,13 +4,13 @@
 
 抽完一副牌之后，点侧边栏「分享图」旁边的 **「分享链接」**，Olivia 会复制一条
 `<页面地址>?reading=<token>` 的网址。别人打开这条网址，看到的是那副牌的
-**只读预览**：牌阵、问题、复现种子、牌面（牌位 / 牌名 / 正逆位）和一段静态
+**只读预览**：牌阵、问题、牌面（牌位 / 牌名 / 正逆位）和一段静态
 提示。它不写访问者的记忆、笔记、目标或档案，也不调用模型，不改 URL 里的
 会话（`#/chat/<id>`）。
 
 After drawing a spread, click **分享链接 / Share link** next to the existing
 PNG share button. Olivia copies `<page>?reading=<token>`. Opening it shows a
-**read-only preview**: spread, question, seed, cards (position / name /
+**read-only preview**: spread, question, cards (position / name /
 orientation) and static hints. It never writes to the viewer's memory, notes,
 goals or archive, never calls the model, and never touches their chat session.
 
@@ -28,7 +28,7 @@ One agreed format, two accepted encodings (both handled by `agent/share_link.py:
 payload（UTF-8, `separators=(',', ':')`，键顺序无关）：
 
 ```json
-{"v":1,"spread":"三张","question":"...","seed":123456789,
+{"v":1,"spread":"三张","question":"...",
  "cards":[{"name":"愚者","orientation":"正位","position":"过去"}]}
 ```
 

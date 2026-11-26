@@ -103,15 +103,15 @@ try:
     status, headers, body = post(
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
          "params": {"name": "draw_cards",
-                    "arguments": {"spread": "三张", "seed": 7}}})
+                    "arguments": {"spread": "三张"}}})
     draw = json.loads(body.decode("utf-8"))
     payload = json.loads(draw["result"]["content"][0]["text"])
     check("tools/call draw_cards 200", status == 200)
     check("tools/call 返回 3 张牌",
           payload.get("ok") is True and len(payload.get("cards", [])) == 3,
           repr(payload)[:200])
-    check("tools/call 抽牌是真随机（无 seed）",
-          payload.get("seed") is None and bool(payload.get("random_source")),
+    check("tools/call 抽牌是真随机（无 seed 字段）",
+          "seed" not in payload and bool(payload.get("random_source")),
           repr(payload)[:200])
 
     status, headers, body = post(

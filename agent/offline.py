@@ -5,7 +5,7 @@ offline.py — Olivia 的离线整理（降级路径）
 
 这不是"离线 AI"，也**不伪装成模型解读**。当没有可用的模型连接（没填 key、
 key 是占位串、或模型调用失败）时，把系统在本地已经客观抽好的那副牌，按
-「牌位所问 + 随牌传统牌意 + 复现种子」整理成一段可读文字，让
+「牌位所问 + 随牌传统牌意」整理成一段可读文字，让
 「抽牌 → 看牌 → 读牌位含义」这条链在没有网络时也能走完。
 
 刻意和"生成式解读"划清界限（也和别家的语料拼贴产品不同）：
@@ -95,11 +95,10 @@ def compose(result, question=""):
             lines.append("    %s时所指：%s" % (ori or "牌面", _clip(body)))
         lines.append("")
 
-    seed = result.get("seed")
-    if result.get("random_source"):
+    if result.get("manual"):
+        lines.append("抽牌方式：来访者亲手挑选（牌由你选，正逆位由系统内核熵产生，不可复现、无种子）")
+    else:
         lines.append("抽牌方式：系统真随机（OS 内核熵）· 每次都不同、不可复现、无种子")
-    elif seed is not None:
-        lines.append("审计种子：%s（同种子 + 同几张牌可复现同一组正逆位）" % seed)
     lines.append(_TAIL)
     return "\n".join(lines)
 

@@ -349,7 +349,7 @@ def daily_card_message():
     """每日一牌：用内核熵真随机抽一张，写成一条可读的晨间消息。
 
     不调用模型，所以没有 key / 模型不可用时也照常送达。
-    走 SystemRandom（os.urandom），每次都不同、不可复现，也不输出 seed。
+    走 SystemRandom（os.urandom），每次都不同、不可复现，也不输出任何可复现的数字。
     """
     try:
         import tools as tools_mod

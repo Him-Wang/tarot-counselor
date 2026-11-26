@@ -51,7 +51,7 @@ TOOLS = [
         "name": "draw_cards",
         "description": "一键真随机抽牌：用操作系统内核熵（os.urandom）从传统牌阵抽牌，"
                        "不放回、每次都不同、不可复现。返回牌位、正逆位、传统牌意与布局坐标。"
-                       "抽牌不调用任何模型，也不产生可重放的种子。",
+                       "抽牌不调用任何模型，也不产生任何可复现的数字。",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -191,7 +191,7 @@ def _text_result(payload, is_error=False):
 def call_tool(name, arguments):
     args = arguments or {}
     if name == "draw_cards":
-        # 一键真随机：每次从 OS 内核熵重新采样，不接 seed、不可复现。
+        # 一键真随机：每次从 OS 内核熵重新采样，不可复现。
         return tools.draw_cards_random(str(args.get("spread") or "三张"),
                                        str(args.get("question") or ""))
     if name == "lookup_card":
@@ -305,7 +305,7 @@ def _selftest():
         "工具数 %d != 预期 %d" % (len(listed["result"]["tools"]), expected))
     draw = handle_message({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                            "params": {"name": "draw_cards",
-                                      "arguments": {"spread": "三张", "seed": 7}}})
+                                      "arguments": {"spread": "三张"}}})
     payload = json.loads(draw["result"]["content"][0]["text"])
     assert payload["ok"] and len(payload["cards"]) == 3
     lookup = handle_message({"jsonrpc": "2.0", "id": 4, "method": "tools/call",

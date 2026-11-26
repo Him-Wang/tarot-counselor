@@ -163,7 +163,7 @@ check("指引之星七格不重叠",
 section("tools.py 抽牌")
 tools = importlib.import_module("tools")
 
-# 一键真随机：OS 内核熵，每次不同、不可复现、无 seed
+# 一键真随机：OS 内核熵，每次不同、不可复现、无种子字段
 result = tools.draw_cards_random("凯尔特十字", "测试")
 check("真随机抽牌成功", result.get("ok"), str(result)[:200])
 names = [c["name"] for c in result["cards"]]
@@ -171,14 +171,11 @@ check("不放回（无重复牌）", len(names) == len(set(names)), str(names))
 check("牌位数=10（凯尔特十字）", len(result["cards"]) == 10)
 check("每张牌带牌意", all(c.get("meaning") for c in result["cards"]))
 check("带几何布局", bool(result.get("layout", {}).get("cells")))
-check("真随机不产生 seed（不可复现）", result.get("seed") is None)
+check("真随机不携带任何 seed 字段", "seed" not in result)
 check("真随机标记随机源", bool(result.get("random_source")))
-check("真随机每次结果不同",
-      [c["name"] for c in result["cards"]] !=
-      [c["name"] for c in tools.draw_cards_random("凯尔特十字")["cards"]])
 
-# 手动选牌：来访者挑的牌按顺序落位，正逆位由 seed 决定、可复现
-_picked = tools.draw_cards("三张", "手选", picks=[0, 4, 21], seed=7)
+# 手动选牌：来访者挑的牌按顺序落位，正逆位由内核熵即时产生、不可复现
+_picked = tools.draw_cards("三张", "手选", picks=[0, 4, 21])
 check("手选直接采用挑出的牌",
       [c["name"] for c in _picked["cards"]] == ["愚者", "皇帝", "世界"],
       str([c["name"] for c in _picked["cards"]]))
@@ -186,17 +183,19 @@ check("手选结果标记 manual", _picked.get("manual") is True)
 check("手选仍给正逆位", all(c.get("orientation") in ("正位", "逆位")
                         for c in _picked["cards"]))
 check("手选忽略重复与越界下标",
-      [c["name"] for c in tools.draw_cards("单张", picks=[3, 3, 99, -1], seed=7)["cards"]] == ["皇后"])
-check("同 seed + 同 picks 正逆位可复现",
-      [(c["name"], c["orientation"]) for c in tools.draw_cards("三张", "x", picks=[0, 4, 21], seed=42)["cards"]]
-      == [(c["name"], c["orientation"]) for c in tools.draw_cards("三张", "x", picks=[0, 4, 21], seed=42)["cards"]])
-check("手选默认种子来自系统熵且 < 2^53",
-      0 <= tools.draw_cards("单张", picks=[3], seed=None)["seed"] < 2 ** 53)
-check("抽牌流不是 MT19937",
-      tools._SeedStream(42).getrandbits(64) != random.Random(42).getrandbits(64))
+      [c["name"] for c in tools.draw_cards("单张", picks=[3, 3, 99, -1])["cards"]] == ["皇后"])
+check("手选不携带任何 seed 字段", "seed" not in _picked)
+check("两条路径都没有 _SeedStream / seed 机制",
+      not hasattr(tools, "_SeedStream") and not hasattr(tools, "_new_seed"))
 _short = tools.draw_cards("三张", picks=[0])
 check("手选张数不足时报错、绝不退回随机", _short.get("ok") is False and "reason" in _short)
 check("不传 picks 时手选接口报错", tools.draw_cards("三张").get("ok") is False)
+try:
+    tools.draw_cards("三张", picks=[0, 1, 2], seed=7)
+    _seed_rejected = False
+except TypeError:
+    _seed_rejected = True
+check("旧 seed 参数已彻底删除（再传会 TypeError）", _seed_rejected)
 
 
 # --------------------------------------------------------------- memory
@@ -221,6 +220,7 @@ check("整理含牌位名（过去/现在/未来）",
       all(p in _off_text for p in ("过去", "现在", "未来")))
 check("整理含传统牌意", "传统牌意" in _off_text)
 check("整理标注真随机、无种子", "系统真随机" in _off_text and "无种子" in _off_text)
+check("整理不含任何数字种子", "种子 " not in _off_text and "审计种子" not in _off_text)
 check("整理不承诺预测", "不预言" in _off_text)
 check("整理每张牌都列到", all(c["name"] in _off_text for c in _off_draw["cards"]))
 check("chunks 切分保留全部文本",
@@ -473,8 +473,8 @@ _draw = mcp.handle_message({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                                        "arguments": {"spread": "三张"}}})
 _dp = json.loads(_draw["result"]["content"][0]["text"])
 check("MCP 抽牌返回 3 张", _dp.get("ok") and len(_dp.get("cards", [])) == 3)
-check("MCP 抽牌是真随机（无 seed、带随机源）",
-      _dp.get("seed") is None and bool(_dp.get("random_source")))
+check("MCP 抽牌是真随机（无 seed 字段、带随机源）",
+      "seed" not in _dp and bool(_dp.get("random_source")))
 _draw2 = mcp.handle_message({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
                              "params": {"name": "draw_cards",
                                         "arguments": {"spread": "三张"}}})

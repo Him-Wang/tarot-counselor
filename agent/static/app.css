@@ -526,12 +526,11 @@ body.dark .safety-line,
   font-size:22px;line-height:1.3;letter-spacing:.03em;color:var(--text);
 }
 .b-sub{margin-top:6px;font-size:var(--fs-12);color:var(--muted);line-height:1.6}
-.b-seed{
+.b-drawinfo{
   margin:12px 0 0;padding-top:12px;
   border-top:1px solid var(--line-soft);
   font-size:12px;font-family:var(--font-mono);color:var(--muted-2);
 }
-.b-seed b{color:var(--gold-dim);font-weight:400}
 .b-question{
   margin:12px 0 0;padding:10px 12px;
   border-left:2px solid rgba(201,168,106,.4);

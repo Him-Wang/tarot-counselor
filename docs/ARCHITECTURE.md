@@ -108,8 +108,8 @@ sequenceDiagram
         T-->>S: 按挑选顺序落位的牌面 + 正逆位
         S-->>C: JSON cards + ask（牌面写入 pending）
       else 系统随机
-        S->>T: draw_cards(spread)
-        T-->>S: 牌面 + 正逆位 + 牌意 + 复现种子 + 布局
+        S->>T: draw_cards_random(spread)
+        T-->>S: 牌面 + 正逆位 + 牌意 + 布局（内核熵真随机、无种子）
         S-->>C: SSE tool → meditate → cards → token(固定提问)
       end
       Note over S: 牌面存入该 session 的 pending，30 分钟内等提问
@@ -134,7 +134,9 @@ sequenceDiagram
 要点：
 
 1. **安全闸门在最前。** `safety.detect()` 在视觉桥、抽牌、主模型与记忆之前执行；命中即切断，历史中的危机残留也会被过滤。可选的 `safety_second_check` 默认关闭；开启后只会把正则未命中但表达模糊的那一句先发给模型做一次 YES/NO 分类，再决定是否切断。
-2. **两阶段抽牌。** 抽牌轮完全本地：`tools.draw_cards()` 从 78 张牌中不放回抽样，返回牌面、牌意、布局与种子，本轮不调用模型。种子来自系统熵（`secrets` → `os.urandom`），采样由 HMAC-SHA256 比特流（`_SeedStream`）完成，不再使用 MT19937，但同一 seed 仍能精确复现同一副牌。牌面按 `session_id` 暂存在内存，等下一轮问题到来才解读。界面默认走**手选**：牌阵定下后 `/api/chat` 只发 `pick` 舞台（不发牌），来访者挑满张数后 `POST /api/pick` 把下标按顺序交给 `draw_cards(picks=…)`，只随机正逆位，并按同一套 pending 流程进入解读轮；不带 `pick` 的 API 调用仍保持自动随机抽牌。
+2. **两阶段抽牌。** 抽牌轮完全本地，不调用模型。牌面按 `session_id` 暂存在内存，等下一轮问题到来才解读。两条路径的正逆位都由 `random.SystemRandom()`（底层 `os.urandom`）即时产生，不可预测、不可复现、没有任何可重放的数字：
+   - **手选**（界面默认）：牌阵定下后 `/api/chat` 只发 `pick` 舞台（不发牌），来访者挑满张数后 `POST /api/pick` 把下标按顺序交给 `draw_cards(picks=…)`，只随机正逆位，并按同一套 pending 流程进入解读轮。
+   - **一键真随机**：`POST /api/random-draw` 或 `/api/chat` 不带 `pick` 时调用 `draw_cards_random()`，从 78 张里不放回随机抽取；每日一牌与 MCP `draw_cards` 也走这条路径。
 3. **解读轮是硬约束。** 已抽出的牌面、牌位含义与传统牌意被写进 system；这一轮只给模型 `lookup_card` / `search_knowledge` 两个只读工具，`draw_cards` 与记忆写入工具都不下发，模型不能重抽、换牌或自行补牌。
 4. **补牌是显式路径。** 只有识别到来访者主动“补一张”才调用 `tools.extra_card()`，理由写入 `extras.jsonl`，原牌不替换。
 5. **agentic loop。** 普通对话最多 6 轮“模型 → 工具 → 模型”；解读轮另有只读工具循环，最多 3 轮，轮数用尽后再补一次纯文本收尾。每次工具调用先执行 `tools.execute()`，再把结果作为 `role=tool` 消息送回模型。

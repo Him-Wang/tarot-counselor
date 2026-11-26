@@ -769,7 +769,7 @@ class Handler(BaseHTTPRequestHandler):
 
         elif p == "/api/random-draw":
             # ---- 一键真随机抽牌：走 OS 内核熵（SystemRandom），每次都不同 ----
-            # 不产生、不暴露可复现 seed；与手选 /api/pick 是两条完全独立的路径。
+            # 不产生、不暴露任何可复现的数字；与手选 /api/pick 是两条完全独立的路径。
             sid = str(body.get("session_id") or "default")
             spread = str(body.get("spread") or "")
             if spread and spread not in spreads_mod.SPREADS:
@@ -779,6 +779,8 @@ class Handler(BaseHTTPRequestHandler):
             result = tools.draw_cards_random(spread=spread,
                                              question=str(body.get("question") or ""))
             _pending_draws[sid] = {"result": result, "at": time.time()}
+            # 同步到 _last_spreads：🎲 抽完后点「补一张」要能在这副牌上补（M1）。
+            _last_spreads[sid] = {"result": result, "at": time.time()}
             if demo_mode.should_persist():
                 try:
                     memory.record_draw(result, "")
@@ -952,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                     if want_pick:
                         pick_data = _pick_payload(picked_spread)
                     else:
-                        # 缺省（非手选）路径一律走内核熵真随机，不产生可复现 seed。
+                        # 缺省（非手选）路径一律走内核熵真随机，不产生可复现的数字。
                         local_draw = tools.draw_cards_random(spread=picked_spread)
                 elif asks_draw:
                     spread_list_reply = _spread_choice_reply()
@@ -962,17 +964,25 @@ class Handler(BaseHTTPRequestHandler):
             # ---- 补牌：来访者主动要求时，在上一副牌上补一张 ----
             # 补牌是显式路径：模型自己不能补，只有这条分支会往牌面里加牌，
             # 且必须留下理由，避免「随手加一张」变成绕过牌阵的借口。
-            if pending_result is None and _extra_requested(message):
-                last = _last_spreads.get(sid)
-                if last:
-                    pending_result = last.get("result")
-                    extra = tools.extra_card(pending_result, _extra_reason(message))
+            # 牌源有两种：① 已解读过的从 _last_spreads 取（pending 已清空）；
+            # ② 🎲 抽完还没提问的仍在 _pending_draws（pending_result 非空）——
+            # 两种都要能补，否则「抽完立刻补一张」会失效（M1）。
+            if _extra_requested(message):
+                base = pending_result
+                if base is None:
+                    last = _last_spreads.get(sid)
+                    base = last.get("result") if last else None
+                if base is not None:
+                    extra = tools.extra_card(base, _extra_reason(message))
                     if extra.get("ok"):
                         card = extra["card"]
-                        pending_result.setdefault("extras", []).append(card)
-                        _last_spreads[sid] = {"result": pending_result, "at": time.time()}
+                        base.setdefault("extras", []).append(card)
+                        pending_result = base
+                        _last_spreads[sid] = {"result": base, "at": time.time()}
+                        if sid in _pending_draws:
+                            _pending_draws[sid]["result"] = base
                         if demo_mode.should_persist():
-                            _record_extra(sid, pending_result, card)
+                            _record_extra(sid, base, card)
 
             # retrieve relevant knowledge for this turn（按界面语言取对应语料，缺失回退中文）
             context, used = knowledge.retrieve(
@@ -1134,7 +1144,7 @@ class Handler(BaseHTTPRequestHandler):
                     turn_draw = None
                     reading_round = True
                     if _offline:
-                        # 离线降级：不假装模型解读，只按传统牌意 + 牌位 + 种子
+                        # 离线降级：不假装模型解读，只按传统牌意 + 牌位
                         # 客观整理这副已抽出的牌，让「看牌 → 读牌」链走完。
                         emit({"offline": True})
                         for piece in offline.chunks(offline.compose(pending_result, message)):

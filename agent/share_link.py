@@ -18,7 +18,6 @@ Payload schema::
     {"v": 1,
      "spread": "三张",
      "question": "...",
-     "seed": 123456789,
      "cards": [{"name": "愚者", "orientation": "正位", "position": "过去"}, ...]}
 
 Limits on decode: token <= 16 KB, decoded JSON <= 16 KB, at most 78 cards.
@@ -86,13 +85,8 @@ def encode(payload: dict) -> str:
         "v": 1,
         "spread": str(payload.get("spread", "")),
         "question": str(payload.get("question", "")),
-        "seed": payload.get("seed"),
         "cards": clean,
     }
-    if isinstance(clean_payload["seed"], bool) or not isinstance(
-        clean_payload["seed"], (int, str, type(None))
-    ):
-        clean_payload["seed"] = str(clean_payload["seed"])
     raw = json.dumps(clean_payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_DECODED_BYTES:
         raise ValueError("payload too large")
@@ -129,11 +123,6 @@ def decode(token: str):
         for k in ("spread", "question"):
             if k in data and not isinstance(data[k], str):
                 return None
-        seed = data.get("seed")
-        if seed is not None and isinstance(seed, bool):
-            return None
-        if seed is not None and not isinstance(seed, (int, str)):
-            return None
         return data
     except (ValueError, TypeError, KeyError, UnicodeError, binascii.Error, zlib.error):
         return None
