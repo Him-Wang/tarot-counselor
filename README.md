@@ -8,7 +8,7 @@
 她只在你把问题说出口之后，才开始读。
 
 [![CI](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml/badge.svg)](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-PolyForm%20NC%20%2B%20CC%20BY--NC--SA-green.svg)](LICENSE)
 
@@ -42,6 +42,8 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 > 牌不开口，人开口。她陪你把牌读完，但不接管你的人生。
 
+完整的安全边界、AI 披露与危机资源见 [SAFETY.md](SAFETY.md)（应用内可打开 `/safety`）。
+
 ---
 
 ## 三十秒开始
@@ -52,6 +54,16 @@ Olivia 由三样东西组成，缺一样都不成立：
 | **源码** | `cd agent && python server.py` | 只用 Python 3 标准库，不装任何依赖 |
 | **Docker** | `docker compose up -d` | 数据挂在 `./agent/data`，删容器不失忆 |
 | **手机** | 同一个 Release 里的 `Olivia-release.apk` | WebView 薄客户端，连电脑上的 8765 端口 |
+
+### 从 PyPI 安装
+
+```bash
+pip install olivia-tarot
+olivia            # 启动本地网页服务，打开 http://127.0.0.1:8765
+olivia-mcp        # 或：以 MCP stdio 方式启动（供 Claude Desktop 等客户端接）
+```
+
+纯标准库、零运行时依赖，支持 Python 3.9+。首次打开后在「设置」里填模型 key。
 
 第一次打开后点「设置」，填一个模型 key。抽牌、看牌、读牌位都不需要 key；只有「把牌读给你听」会调用模型。
 
@@ -77,7 +89,7 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 **三、读这副牌。** 落点固定为 **原本牌意 → 牌阵位置 → 你的问题 → 你的情境**。两张以上连读时，再从元素、数字阶段、大小牌对位、宫廷牌、叙事弧线五个角度看牌与牌的关系（`knowledge/meanings/牌间关系.md`）。这些是视角，不是套公式。
 
-**四、留下来。** 读到一半可以按「停止」，说过的话保留；想补一个视角就按「补一张」，新牌单列、不替换原牌；可以把牌面和她的话存成一张 1080 宽的 PNG；可以让她朗读；每条消息下面记着本轮 tokens。设置里还能开「每日一牌」——到点本地抽一张写进收件箱，不调模型，没 key 也照常送达。
+**四、留下来。** 读到一半可以按「停止」，说过的话保留；想补一个视角就按「补一张」，新牌单列、不替换原牌；可以把牌面和她的话存成一张 1080 宽的 PNG；可以让她朗读；每条消息下面记着本轮 tokens。设置里还能开「每日一牌」——到点本地抽一张写进收件箱，不调模型，没 key 也照常送达。抽完牌还能点「分享链接」，把牌阵编进一条 `?reading=` 深链，别人打开只是只读预览，不写他的记忆也不调模型（见 [docs/SHARE.md](docs/SHARE.md)）。
 
 ---
 
@@ -142,6 +154,8 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 对话、记忆、笔记、key 都不上传、不过中间服务器。API key 落盘前加密：Windows 走 DPAPI，其它平台退化为收紧权限的包装。旧配置里的明文 key 会在下一次保存时自动迁移。
 
+要放到公网上给别人体验？用 [`OLIVIA_DEMO=1` 只读演示模式](docs/DEMO.md)（不保存任何数据、离线回复，须置于 HTTPS 反向代理之后）。
+
 ---
 
 ## 给别的程序用：MCP
@@ -174,6 +188,21 @@ Olivia 由三样东西组成，缺一样都不成立：
 
 自检：`python agent/mcp_server.py --selftest`。
 
+### Streamable HTTP（远程客户端 / 浏览器）
+
+零依赖的 HTTP 传输，和 stdio 版共用同一套工具与权限边界。默认只绑定回环地址：
+
+```bash
+python agent/mcp_http.py
+# 端点：http://127.0.0.1:8766/mcp ；健康检查：http://127.0.0.1:8766/health
+```
+
+可用 `MCP_HTTP_HOST` / `MCP_HTTP_PORT` 改地址端口（绑 `0.0.0.0` 会打印警告，请放在有认证的代理后）。POST `/mcp` 支持 JSON 或 SSE（`Accept: text/event-stream`）响应，GET/DELETE `/mcp` 返回 405。支持 CORS 预检。客户端配置示例：
+
+```json
+{"mcpServers": {"olivia-tarot": {"url": "http://127.0.0.1:8766/mcp"}}}
+```
+
 ---
 
 ## 换个地方用她
@@ -188,8 +217,14 @@ Olivia 由三样东西组成，缺一样都不成立：
 零第三方依赖，不碰真实模型 API，没 key 也能跑：
 
 ```bash
-python tests/test_whitebox.py     # 173 项：源码结构、纯函数、协议转换、牌阵、配对/加密/迁移/MCP/目标/档案
+python tests/test_whitebox.py     # 187 项：源码结构、纯函数、协议转换、牌阵、配对/加密/迁移/MCP/目标/档案/英文知识库
 python tests/test_blackbox.py     # 75 项：独立端口起真实服务，发 HTTP 请求
+python tests/test_safety_redteam.py  # 267 项：安全闸门红队对抗用例（隐喻/否定/中英混写），并列出已知缺口
+python tests/test_mcp_http.py     # 27 项：MCP Streamable HTTP（JSON / SSE / CORS / 权限边界）
+python tests/test_backup_crypto.py   # 8 项：加密备份（PBKDF2 + 认证标签）
+python tests/test_tls_server.py   # 7 项：局域网自签 HTTPS（含真实 TLS 握手）
+python tests/test_demo_mode.py    # 48 项：只读演示模式（配置夹取 / 阻断写入 / 会话重置）
+python tests/test_share_link.py   # 22 项：分享深链（编解码 / 损坏与超大 token 拒绝 / 只读快照）
 ```
 
 黑盒覆盖：危机请求不发牌 / 不调工具 / 先给资源；抽牌不放回；无 key 时解读轮标 offline 且不伪装 AI；历史里的危机残留不二次报警；牌图可访问、目录穿越被拒；`AGENT_HOST=0.0.0.0` 时未配对 401、错码限流、对码后 Cookie 放行。

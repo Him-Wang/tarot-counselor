@@ -8,7 +8,7 @@ Cards are drawn locally. Memories never leave this machine.
 She only begins reading after you say what you actually want to ask.
 
 [![CI](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml/badge.svg)](https://github.com/Him-Wang/tarot-counselor/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![license](https://img.shields.io/badge/license-PolyForm%20NC%20%2B%20CC%20BY--NC--SA-green.svg)](LICENSE)
 
@@ -42,6 +42,8 @@ That last point is not a polite request in a prompt. It is a gate at the `/api/c
 
 > The cards do not speak; the person does. She stays with you through the reading, but she does not take over your life.
 
+Full safety boundaries, AI disclosure and crisis resources: [SAFETY.md](SAFETY.md) (also available in-app at `/safety`).
+
 ---
 
 ## Start in thirty seconds
@@ -52,6 +54,16 @@ That last point is not a polite request in a prompt. It is a gate at the `/api/c
 | **Source** | `cd agent && python server.py` | Python 3 standard library only, no dependencies |
 | **Docker** | `docker compose up -d` | Data mounts at `./agent/data`; deleting the container does not erase her memory |
 | **Phone** | `Olivia-release.apk` from the same Release | Thin WebView client that connects to port 8765 on your computer |
+
+### Install from PyPI
+
+```bash
+pip install olivia-tarot
+olivia            # start the local web service, then open http://127.0.0.1:8765
+olivia-mcp        # or: start as an MCP stdio server (for Claude Desktop and friends)
+```
+
+Standard library only, zero runtime dependencies, Python 3.9+. Paste a model key in Settings on first launch.
 
 Open Settings and paste a model key. Drawing, viewing and position meanings need no key; only "read this spread to me" calls a model.
 
@@ -77,7 +89,7 @@ All three protocols share the same agentic loop and tool calls. The key is writt
 
 **Three: read this spread.** The order is fixed: **traditional meaning → position → your question → your situation**. When two or more cards are read together, she also looks at elements, numerical stages, majors versus minors, court cards and narrative arc (`knowledge/meanings/牌间关系.md`). Perspectives, not formulas.
 
-**Four: keep it.** Press "Stop" mid-reading and what was said stays; press "Add a card" for another angle, listed separately without replacing the original; render the cards and her words into a 1080-wide PNG; have it read aloud; see this turn's token count under each message. In Settings, enable "Daily card": every day she draws one locally into the inbox — no model call, works without a key.
+**Four: keep it.** Press "Stop" mid-reading and what was said stays; press "Add a card" for another angle, listed separately without replacing the original; render the cards and her words into a 1080-wide PNG; have it read aloud; see this turn's token count under each message. In Settings, enable "Daily card": every day she draws one locally into the inbox — no model call, works without a key. After a draw, click **Share link** to encode the spread into a `?reading=` deep link: recipients get a read-only preview that writes nothing to their memory and calls no model (see [docs/SHARE.md](docs/SHARE.md)).
 
 ---
 
@@ -138,6 +150,8 @@ Once `AGENT_HOST` is not a loopback address (for example, when your phone needs 
 
 Conversations, memories, notes and keys are never uploaded and never pass through a middle server. The API key is encrypted before it hits disk: DPAPI on Windows, a permission-hardened wrapper elsewhere. Plaintext keys in old configs migrate on the next save.
 
+Want to share a public demo? Use the [read-only `OLIVIA_DEMO=1` demo mode](docs/DEMO.md) (saves nothing, offline replies, must sit behind an HTTPS reverse proxy).
+
 ---
 
 ## For other programs: MCP
@@ -164,6 +178,21 @@ Conversations, memories, notes and keys are never uploaded and never pass throug
 
 Self-test: `python agent/mcp_server.py --selftest`.
 
+### Streamable HTTP (remote / browser clients)
+
+A zero-dependency HTTP transport sharing the same tools and permission boundary as stdio. Binds to loopback by default:
+
+```bash
+python agent/mcp_http.py
+# Endpoint: http://127.0.0.1:8766/mcp ; health: http://127.0.0.1:8766/health
+```
+
+Override with `MCP_HTTP_HOST` / `MCP_HTTP_PORT` (binding `0.0.0.0` logs a warning — put it behind an authenticating proxy). POST `/mcp` answers in JSON or SSE (`Accept: text/event-stream`); GET/DELETE `/mcp` return 405. CORS preflight supported. Client config example:
+
+```json
+{"mcpServers": {"olivia-tarot": {"url": "http://127.0.0.1:8766/mcp"}}}
+```
+
 ---
 
 ## Use her elsewhere
@@ -178,8 +207,14 @@ Self-test: `python agent/mcp_server.py --selftest`.
 No third-party dependencies, no real model API, runs without a key:
 
 ```bash
-python tests/test_whitebox.py     # 120 checks: source structure, pure functions, protocols, spreads, pairing/crypto/migrations/MCP
-python tests/test_blackbox.py     # 57 checks: starts a real server on its own port and makes HTTP requests
+python tests/test_whitebox.py     # 187 checks: source structure, pure functions, protocols, spreads, pairing/crypto/migrations/MCP/goals/archive/English KB
+python tests/test_blackbox.py     # 75 checks: starts a real server on its own port and makes HTTP requests
+python tests/test_safety_redteam.py  # 267 checks: safety-gate red-team cases (metaphors, negation, mixed zh-en); lists known gaps
+python tests/test_mcp_http.py     # 27 checks: MCP Streamable HTTP (JSON / SSE / CORS / permission boundary)
+python tests/test_backup_crypto.py   # 8 checks: encrypted backups (PBKDF2 + auth tag)
+python tests/test_tls_server.py   # 7 checks: LAN self-signed HTTPS (incl. real TLS handshake)
+python tests/test_demo_mode.py    # 48 checks: read-only demo (config hardening / write blocking / session reset)
+python tests/test_share_link.py   # 22 checks: share deep links (encode/decode / corrupt & oversized tokens / read-only snapshot)
 ```
 
 The black box covers: crisis requests draw no cards, call no tools and give resources first; draws use no replacement; without a key the reading turn is marked offline and does not pretend to be AI; crisis residue in history does not re-alert; card images are reachable and traversal is rejected; with `AGENT_HOST=0.0.0.0` unpaired requests get 401, wrong codes are throttled and the cookie works after pairing.

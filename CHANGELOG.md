@@ -2,7 +2,7 @@
 
 本项目的重要变更记录在这里。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-排序说明：`Unreleased` 收拢尚未发布的新能力；`1.2.0` 是当前 `main` 的版本，对应最新 Release；`1.1.0` 与 `1.0.0` 是历史版本。
+排序说明：`Unreleased` 收拢尚未发布的新能力；`1.3.0` 是正在开发的版本（对应 `server.py` 与 PyPI 包版本），`1.2.0` 是最新 Release；`1.1.0` 与 `1.0.0` 是历史版本。
 
 ## [Unreleased]
 
@@ -23,6 +23,16 @@
   附图按钮的提示改成「本机 OCR 或云端视觉模型读图」，/api/plugins 返回 `vision.ocr`。
 - 离线兜底也会先把图上的字念出来（`offline.compose_chat(..., image_note=...)`），
   并说明这些字是本机 OCR 读的、可能有错字。
+- 统一看图管线（`agent/plugin_sight.py`）：本机 OCR 优先，读不到字再按需升级到云端视觉模型，都没有则明确提示看不了图；设置页两处引擎配置合并为一个入口，调用点只剩一行。
+- 英文知识库（`knowledge/en/`，17 份文件覆盖 78 张牌与全部语料）：设置语言选英文时，检索、牌义与资料清单优先走英文，缺失时回退中文；中文路径逐字节不变。
+- PyPI 一行安装：`pyproject.toml` / `MANIFEST.in` / `olivia_cli.py`，`pip install olivia-tarot` 后 `olivia`（网页）与 `olivia-mcp`（stdio MCP）两个命令；wheel 含 78 张牌图与全部资料，零第三方依赖。
+- 安全页与 AI 披露：`SAFETY.md` + 站点 `/safety` 路由（AI 身份、危机闸门、边界、危机热线、隐私与上报）。
+- 局域网 HTTPS（可选）：`agent/tls_server.py` 纯标准库自签证书（RSA-2048 + X.509v3 SAN），`AGENT_TLS=1` 启动即裹住 HTTP；自签仅加密传输，浏览器需手动放行。
+- 加密备份导出：设置里可设口令导出 `olivia-backup.olivia`（PBKDF2-HMAC-SHA256 20 万轮 + HMAC 认证标签，`agent/backup_crypto.py`）；无口令拒绝导出，导入时口令错或文件被篡改即报错。明文导出仍可用。
+- MCP Streamable HTTP（`agent/mcp_http.py`）：除 stdio 外新增 `POST /mcp`（JSON / SSE、batch、通知 202），默认绑定 127.0.0.1:8766，权限边界与 stdio 完全一致。
+- 安全红队对抗测试（`tests/test_safety_redteam.py`）：267 个用例覆盖中英隐喻、否定、拆字、混写与误报陷阱，70 个已知盲点以数据记录不入失败断言；CI 增加对应步骤。
+- 只读演示模式（`agent/demo_mode.py`，`OLIVIA_DEMO=1`）：强制离线、清空密钥、关闭记忆与可选模式，阻断全部写入端点与落盘，会话每请求重置，顶部横幅提示；配套 `docs/DEMO.md`。
+- 分享深链（`agent/share_link.py` + `docs/SHARE.md`）：解读完成可复制 `?reading=<token>` 只读快照链接，打开后不加载会话、不写 localStorage、不发 API；损坏 / 超大 token 一律忽略。
 
 ### Changed
 
@@ -65,7 +75,7 @@
 - 牌义扩写：78 张韦特牌补齐牌面象征、正位补充与逆位补充；16 张宫廷牌增加「人物 / 自我的某一面」视角。
 - 解牌方法：新增 `knowledge/readings/`（读牌流程、单张深读、逆位读法、宫廷牌读法）；`牌间关系.md` 增加花色进程一节。
 - Docker 与 CI：Dockerfile、docker-compose、GitHub Actions 四矩阵自查。
-- 自查补齐：新增 `auth` / `secret_store` / `db` / `backup` / `mcp_server` 用例与局域网配对黑盒，共 177 项（120 白盒 + 57 黑盒）。
+- 自查补齐：新增 `auth` / `secret_store` / `db` / `backup` / `mcp_server` 用例与局域网配对黑盒，共 262 项（187 白盒 + 75 黑盒；数字随 Unreleased 的目标/档案/受限写入 MCP/英文知识库用例更新）。
 - 英文 README：`README.en.md`，与中文版结构对应。
 
 ### Changed

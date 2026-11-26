@@ -13,6 +13,7 @@
 - `meanings/` 存放经整理的 RWS 传统牌意、解牌方法与牌间关系（`draw_cards` 工具会随牌面返回对应牌意）；抽牌/选牌规则仍不在本目录，由工具客观产生。多牌连读时先读 `meanings/牌间关系.md`。
 - `readings/` 是方法层：不知道怎么起手读 `readings/读牌流程.md`；抽到逆位读 `readings/逆位读法.md`；抽到侍从/骑士/王后/国王读 `readings/宫廷牌读法.md`；想把一张牌讲透读 `readings/单张深读.md`。
 - 牌阵定义在 `agent/spreads.py`（单一来源：名称、类别、牌位与位置含义），`draw_cards` 会带着牌位含义一起返回；不要在这里另存一份牌阵清单，避免两处不一致。
+- **英文镜像**：`knowledge/en/` 是本站内容的英文版，按相同目录结构组织（`meanings/`、`readings/`、`ethics/`、`skills/`、`spreads/`、`occult/`），供 `language: "en"` 时使用；英文文件缺失时回退到本目录中文原件。`knowledge.list_docs(lang=...)` / `knowledge.retrieve(..., lang=...)` / `knowledge.get_card_entry(..., lang=...)` 接收可选 `lang` 参数（不传则行为不变，仍读中文）。
 
 ## 目录
 

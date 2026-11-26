@@ -1180,6 +1180,8 @@ async function loadConfig(){
     return;
   }
   const c = d.config;
+  // 只读演示：/api/config 返回 demo:true 时才显示顶部提示条（默认 hidden 对所有人隐藏）
+  if($('demoBanner')) $('demoBanner').hidden = d.demo !== true;
   // 旧配置里的 'deepseek' 别名映射到新的 deepseek-chat 预设
   if (c.backend === 'deepseek') c.backend = 'deepseek-chat';
   $('preset').value = PRESET_MAP[c.backend] ? c.backend : 'deepseek-flash';
@@ -2323,8 +2325,210 @@ async function exportShare(){
 }
 $('shareBtn').onclick = exportShare;
 
-/* 启动时按书脊翻到对应的一页：#/chat/<id> */
-(function bootRoute(){
+/* ---------------------------------------------------------------------------
+   分享深链：把最后一副牌编进 ?reading=<token> 的 URL，别人打开是**只读**的。
+   格式与 agent/share_link.py 完全一致（该文件同时接受这种 o1. 形式）：
+     o1.<base64url(UTF-8 紧凑 JSON，无 padding)>
+   payload = {v:1, spread, question, seed,
+              cards:[{name, orientation, position}, ...]}
+   浏览器端没有 zlib，所以直接放明文 JSON；Python 端 decode 兼容明文与 o1z zlib 压缩形式。
+   token 只放牌面文字，不放图片/解释，也不经过服务器：不写记忆、不调模型。
+   --------------------------------------------------------------------------- */
+const SHARE_PREFIX = 'o1.';
+const SHARE_MAX_CARDS = 78;
+const SHARE_MAX_TOKEN = 16 * 1024;
+function shareB64Encode(str){
+  const bytes = new TextEncoder().encode(str);   // UTF-8
+  let bin = '';
+  for(let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function shareB64Decode(body){
+  let b64 = body.replace(/-/g, '+').replace(/_/g, '/');
+  while(b64.length % 4) b64 += '=';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function encodeReading(data){
+  const items = (data && data.items) || [];
+  if(!items.length || items.length > SHARE_MAX_CARDS) return '';
+  const payload = {
+    v: 1,
+    spread: String(data.spread || ''),
+    question: String(data.question || ''),
+    seed: data.seed == null ? null : data.seed,
+    cards: items.map(c => ({
+      name: String(c.name || ''),
+      orientation: String(c.orientation || ''),
+      position: String(c.position || '')
+    }))
+  };
+  const token = SHARE_PREFIX + shareB64Encode(JSON.stringify(payload));
+  return token.length <= SHARE_MAX_TOKEN ? token : '';
+}
+function decodeReading(token){
+  try{
+    if(typeof token !== 'string' || token.length > SHARE_MAX_TOKEN) return null;
+    if(token.indexOf(SHARE_PREFIX) !== 0) return null;   // 不认 o1z.（浏览器不生成压缩形式）
+    const data = JSON.parse(shareB64Decode(token.slice(SHARE_PREFIX.length)));
+    if(!data || typeof data !== 'object' || data.v !== 1) return null;
+    if(!Array.isArray(data.cards) || !data.cards.length || data.cards.length > SHARE_MAX_CARDS) return null;
+    if(typeof data.spread !== 'string' || typeof data.question !== 'string') return null;
+    for(const c of data.cards){
+      if(!c || typeof c !== 'object') return null;
+      for(const k of ['name', 'orientation', 'position'])
+        if(typeof c[k] !== 'string') return null;
+    }
+    if(!(data.seed == null || typeof data.seed === 'number' || typeof data.seed === 'string')) return null;
+    return data;
+  }catch(e){ return null; }
+}
+
+/* 复制只读链接：注入在「分享图」旁边，不改 index.html */
+function copyShareLink(){
+  const data = lastShareData();
+  if(!data){ toast('还没有可分享的牌，先抽一副吧。'); return; }
+  const token = encodeReading(data);
+  if(!token){ toast('这副牌太大或太多，没法放进链接。'); return; }
+  const url = location.origin + location.pathname + '?reading=' + encodeURIComponent(token);
+  const done = () => toast('只读分享链接已复制，别人打开只能看牌，不会写他的记录。');
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done));
+  } else fallbackCopy(url, done);
+}
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }
+  catch(e){ toast('复制失败，请手动复制地址栏里的链接。'); }
+  ta.remove();
+}
+(function injectShareLinkBtn(){
+  const anchor = $('shareBtn');
+  if(!anchor || !anchor.parentNode || $('shareLinkBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'shareLinkBtn'; btn.type = 'button';
+  btn.title = '复制可分享的只读牌阵链接';
+  btn.textContent = '分享链接';
+  anchor.parentNode.insertBefore(btn, anchor.nextSibling);
+  btn.onclick = copyShareLink;
+})();
+
+/* 只读查看器：?reading=<token> 打开时展示牌面 + 静态解读提示。
+   只读取 payload、渲染 DOM；不写 localStorage/记忆/目标/档案，不调 /api/chat。 */
+const SHARE_READING = (() => {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('reading');
+  if(!token) return null;
+  const data = decodeReading(token);
+  if(!data || !data.cards.length) return null;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch(e){}
+  return data;
+})();
+
+function mountShareViewer(data){
+  const ov = document.createElement('div');
+  ov.className = 'overlay show';
+  ov.id = 'shareReader';
+  ov.setAttribute('role', 'dialog');
+  ov.setAttribute('aria-modal', 'true');
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.style.maxWidth = '760px';
+
+  const h = document.createElement('h2');
+  h.textContent = uiText('分享的牌阵 · 只读预览', 'Shared reading · read-only');
+  const desc = document.createElement('p');
+  desc.className = 'desc';
+  desc.textContent = uiText(
+    '这是别人分享的一副牌。只在这里看，不会写进你的记忆、笔记或目标，也不会替你向模型提问。',
+    'A reading shared with you. View only — nothing is saved to your memory, notes or goals, and no model call is made.'
+  );
+  sheet.appendChild(h); sheet.appendChild(desc);
+
+  const meta = document.createElement('div');
+  meta.style.cssText = 'font-size:13px;line-height:1.9;color:var(--muted)';
+  meta.innerHTML =
+    '<div>' + uiText('牌阵', 'Spread') + '：<b style="color:var(--text-2)">' + escHtml(data.spread || uiText('抽牌', 'Draw')) + '</b>' +
+      ' · ' + data.cards.length + ' ' + uiText('张', 'cards') + '</div>' +
+    '<div>' + uiText('所问', 'Question') + '：' + escHtml(data.question || '—') + '</div>' +
+    (data.seed == null ? '' : '<div>' + uiText('复现种子', 'Seed') + '：' + escHtml(String(data.seed)) + '</div>');
+  sheet.appendChild(meta);
+
+  const grid = document.createElement('div');
+  grid.className = 'draw-board';
+  grid.style.cssText = 'margin:16px 0';
+  grid.style.gridTemplateColumns = 'repeat(' + Math.min(data.cards.length, 4) + ', var(--cw))';
+  data.cards.forEach((c, i) => grid.appendChild(mkCardSlot(c, i + 1, false)));
+  const scroll = document.createElement('div');
+  scroll.className = 'draw-scroll';
+  scroll.appendChild(grid);
+  sheet.appendChild(scroll);
+
+  const table = document.createElement('details');
+  table.className = 'b-legend';
+  const sum = document.createElement('summary');
+  sum.textContent = uiText('逐张看看（牌位 · 牌名 · 正逆位）', 'Card by card (position · card · orientation)');
+  table.appendChild(sum);
+  data.cards.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'b-lg';
+    const hint = c.orientation === '逆位'
+      ? uiText('逆位：能量遇阻，先向内看。', 'Reversed: energy is blocked — look inward first.')
+      : uiText('正位：能量顺着牌位展开。', 'Upright: energy unfolds through this position.');
+    row.innerHTML = '<span class="n">' + (i + 1) + '</span><b>' + escHtml(c.position || '-') + '</b>' +
+      '<span>' + escHtml(c.name || '') + (c.orientation ? '（' + escHtml(c.orientation) + '）' : '') +
+      '　' + escHtml(hint) + '</span>';
+    table.appendChild(row);
+  });
+  sheet.appendChild(table);
+
+  const foot = document.createElement('p');
+  foot.className = 'desc';
+  foot.style.margin = '14px 0 0';
+  foot.textContent = uiText(
+    '以上只是传统韦特牌义的静态提示，不是针对你的解读；牌不开口，人开口。',
+    'Only static RWS hints above — not a reading for you. The cards do not speak; people do.'
+  );
+  sheet.appendChild(foot);
+
+  const acts = document.createElement('div');
+  acts.className = 'actions';
+  acts.style.marginTop = '16px';
+  const exit = document.createElement('button');
+  exit.type = 'button'; exit.className = 'primary';
+  exit.textContent = uiText('离开只读预览，回到我的 Olivia', 'Leave preview and return to my Olivia');
+  exit.onclick = () => {
+    const u = new URL(location.href);
+    u.searchParams.delete('reading');
+    location.href = u.toString();
+  };
+  acts.appendChild(exit);
+  sheet.appendChild(acts);
+
+  ov.appendChild(sheet);
+  ov.addEventListener('mousedown', e => { if(e.target === ov) exit.click(); });
+  // 通用 Esc 处理会 closeSheet 移除 .show，但这里要真正离开只读模式，
+  // 否则输入框被锁住又看不到出口。
+  document.addEventListener('keydown', function escExit(e){
+    if(e.key !== 'Escape' || !document.body.contains(ov)) return;
+    e.preventDefault();
+    document.removeEventListener('keydown', escExit);
+    exit.click();
+  });
+  document.body.appendChild(ov);
+  // 只读：连输入框和发送键也锁住，键盘误触也不会触发 send()
+  if(input){ input.readOnly = true; input.placeholder = uiText('只读预览中……', 'Read-only preview…'); }
+  if($('sendBtn')) $('sendBtn').disabled = true;
+  setTimeout(() => exit.focus(), 0);
+}
+if(SHARE_READING) mountShareViewer(SHARE_READING);
+
+/* 启动时按书脊翻到对应的一页：#/chat/<id>（只读预览时不翻页、不写会话簿） */
+if(!SHARE_READING) (function bootRoute(){
   let sid = '';
   const m = String(window.location.hash || '').match(/^#\/chat\/([A-Za-z0-9_-]+)/);
   if(m) sid = m[1];
@@ -2418,6 +2622,7 @@ if (new URLSearchParams(location.search).get('care') === '1') {
 
 /* 从牌义页带一张牌回来：开一页新对话，把这句话放进输入框 */
 (function cardToChat(){
+  if(SHARE_READING) return;   // 只读预览里不新建会话
   const params = new URLSearchParams(location.search);
   const name = params.get('card');
   if(!name) return;

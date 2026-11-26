@@ -614,6 +614,75 @@ archive.ARCHIVE_DIR = _orig_arc_dir
 shutil.rmtree(_arc_tmp, ignore_errors=True)
 
 
+# ---------------------------------------------------------------- knowledge (English mirror)
+section("knowledge.py 英文知识库 / 语言感知加载")
+knowledge = importlib.import_module("knowledge")
+_REPO = os.path.dirname(HERE)
+_EN_ROOT = os.path.join(_REPO, "knowledge", "en")
+
+check("英文根目录存在", os.path.isdir(_EN_ROOT))
+_EN_REQUIRED = [
+    "INDEX.md",
+    "meanings/major-arcana.md", "meanings/wands.md", "meanings/cups.md",
+    "meanings/swords.md", "meanings/pentacles.md", "meanings/card-relationships.md",
+    "meanings/reading-methods.md",
+    "readings/reading-flow.md", "readings/single-card-deep-read.md",
+    "readings/reversed-cards.md", "readings/court-cards.md",
+    "ethics/crisis-and-referral.md", "skills/empathic-listening.md",
+    "spreads/spreads-quick-reference.md",
+    "occult/INDEX.md", "occult/symbol-correspondences.md",
+    "occult/channeling-and-ritual.md",
+]
+_missing = [p for p in _EN_REQUIRED if not os.path.isfile(os.path.join(_EN_ROOT, *p.split("/")))]
+check("英文文档覆盖所有关键类别", not _missing, "missing: %s" % ", ".join(_missing))
+
+# Every English file carries the required headers.
+_bad_headers = []
+for _rp in _EN_REQUIRED:
+    with open(os.path.join(_EN_ROOT, * _rp.split("/")), "r", encoding="utf-8") as _f:
+        _head = _f.read(400)
+    if ("SPDX-License-Identifier: CC-BY-NC-SA-4.0" not in _head
+            or "Copyright (c) 2026 Him-Wang" not in _head):
+        _bad_headers.append(_rp)
+check("英文文件带 SPDX 与版权头", not _bad_headers, "bad: %s" % ", ".join(_bad_headers))
+
+_en_docs = knowledge.list_docs(lang="en")
+check("list_docs(lang=en) 返回英文路径（相对 en/）",
+      bool(_en_docs) and all("en/" not in p and not p.startswith("../") for p in _en_docs)
+      and "meanings/major-arcana.md" in _en_docs, repr(_en_docs[:5]))
+check("list_docs(lang=en)  occult 默认过滤",
+      not any(p.startswith("occult/") for p in _en_docs))
+check("list_docs(lang=en, include_occult=True) 含 occult",
+      any(p.startswith("occult/") for p in knowledge.list_docs(include_occult=True, lang="en")))
+_zh_docs = knowledge.list_docs()
+check("无 lang 时仍是中文库路径",
+      any("大阿卡纳" in p for p in _zh_docs)
+      and not any("major-arcana" in p for p in _zh_docs), repr(_zh_docs[:5]))
+
+_ctx_en, _used_en = knowledge.search("empathic listening counterexamples", lang="en")
+check("英文 query 命中英文文档",
+      bool(_ctx_en) and bool(_used_en) and "empathic-listening" in " ".join(_used_en), repr(_used_en))
+check("英文检索使用英文分词",
+      "reversed" in knowledge._tokens("Reversed, COURTS!", lang="en"))
+check("中文分词路径不变",
+      "逆位" in knowledge._tokens("逆位读法"))
+
+check("_doc_root(en/zh/None) 正确",
+      knowledge._doc_root("en").endswith(os.path.join("knowledge", "en"))
+      and knowledge._doc_root("zh") == os.path.join(_REPO, "knowledge")
+      and knowledge._doc_root() == os.path.join(_REPO, "knowledge"))
+
+check("get_card_entry(en) 读到英文牌义",
+      "新" in knowledge.get_card_entry("The Fool", lang="en")["core"]
+      or "begin" in knowledge.get_card_entry("The Fool", lang="en")["core"].lower(),
+      repr(knowledge.get_card_entry("The Fool", lang="en")))
+check("get_card_meaning(en, Upright) 输出英文标签",
+      "Upright:" in knowledge.get_card_meaning("The Fool", "Upright", lang="en"),
+      repr(knowledge.get_card_meaning("The Fool", "Upright", lang="en")))
+_zh_entry = knowledge.get_card_entry("愚者")
+check("get_card_entry 无 lang 时仍是中文内容",
+      bool(_zh_entry["core"]) and "核心" not in _zh_entry["core"], repr(_zh_entry))
+
 print("\n" + "=" * 46)
 print("白盒自查：%d 通过 / %d 失败" % (PASS, FAIL))
 print("=" * 46)

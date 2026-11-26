@@ -47,3 +47,6 @@ jobs:
 
       - name: Blackbox tests
         run: python tests/test_blackbox.py
+
+      - name: Safety red-team tests
+        run: python tests/test_safety_redteam.py

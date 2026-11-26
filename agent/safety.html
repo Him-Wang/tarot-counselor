@@ -1,0 +1,287 @@
+<!-- SPDX-License-Identifier: CC-BY-NC-SA-4.0 -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dsh-design" content="web">
+<title>Olivia · 安全与边界</title>
+<link rel="stylesheet" href="/static/design-tokens.css?v=18">
+<link rel="stylesheet" href="/static/design-components.css?v=7">
+<style>
+/* ============================================================
+   Olivia · 安全与边界
+   SAFETY.md 的应用内精简版。静态页面，无业务逻辑。
+   ============================================================ */
+html{scroll-behavior:smooth}
+body{min-height:100vh}
+
+/* 固定的导航出口 */
+.safety-exit{
+  position:fixed;top:14px;right:18px;z-index:40;
+  display:inline-flex;align-items:center;gap:6px;
+  min-height:32px;padding:0 14px;border-radius:var(--radius-pill);
+  border:1px solid var(--line-2);
+  background:rgba(10,9,16,.9);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  box-shadow:0 6px 20px rgba(0,0,0,.45);
+  font-size:var(--fs-12);color:var(--muted);letter-spacing:.02em;
+  transition:color .16s var(--ease),border-color .16s var(--ease);
+}
+.safety-exit:hover{color:var(--gold-bright);border-color:rgba(201,168,106,.45)}
+.safety-exit:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+
+.safety{position:relative;z-index:1;max-width:880px;margin:0 auto;padding:40px 32px 90px}
+
+/* 页头 */
+.safety-head{
+  display:flex;align-items:center;gap:10px;
+  min-height:32px;padding:0 100px 0 0;
+}
+.safety-head .mark{display:grid;place-items:center;flex:none;width:18px;height:18px;color:var(--gold)}
+.safety-head .mark svg{width:18px;height:18px}
+.safety-head .brand-name{
+  font-size:var(--fs-13);letter-spacing:.18em;text-transform:uppercase;color:var(--text-2);
+}
+.safety-head .head-note{margin-left:auto;font-size:var(--fs-12);color:var(--muted-2);letter-spacing:.02em}
+
+/* 主标题 */
+.hero{padding-bottom:24px}
+.hero .kicker{display:flex;align-items:center;gap:8px}
+.hero h1{
+  margin-top:16px;
+  font-family:var(--font-serif);font-size:var(--fs-34);font-weight:400;
+  line-height:1.35;letter-spacing:.02em;color:var(--text);max-width:18em;
+}
+.hero .sub{margin-top:16px;max-width:48ch;font-size:var(--fs-14);color:var(--muted);line-height:1.9}
+
+/* 显眼的披露横幅 */
+.disclosure{
+  margin-bottom:12px;padding:20px 24px;
+  border:1px solid rgba(201,168,106,.45);
+  border-left:3px solid var(--gold);
+  background:linear-gradient(90deg,rgba(201,168,106,.09),rgba(201,168,106,.02));
+}
+.disclosure p{margin:0;font-size:var(--fs-14);color:var(--text-2);line-height:1.85}
+.disclosure b{font-weight:400;color:var(--gold-bright);font-family:var(--font-serif)}
+.disclosure .fine{display:block;margin-top:8px;font-size:var(--fs-12);color:var(--muted)}
+
+/* 通用章节 */
+.panel{
+  padding:32px 0 6px;border-top:1px solid var(--line);
+}
+.panel h2{
+  font-family:var(--font-serif);font-size:var(--fs-21);font-weight:400;
+  color:var(--text);letter-spacing:.03em;
+}
+.panel h2 .en{font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted-2);letter-spacing:.06em;margin-left:10px}
+.panel .lead{margin-top:10px;font-size:var(--fs-13);color:var(--muted);line-height:1.85;max-width:54ch}
+.panel ul,.panel ol{margin-top:18px}
+.panel li{
+  position:relative;padding:9px 0 9px 16px;
+  font-size:var(--fs-13);color:var(--muted);line-height:1.85;
+}
+.panel ul li::before{
+  content:"";position:absolute;left:0;top:17px;
+  width:3px;height:3px;border-radius:50%;background:var(--gold-dim);
+}
+.panel li b{color:var(--text-2);font-weight:400}
+.panel .note{
+  margin-top:16px;padding:14px 18px;
+  border-left:1px solid rgba(201,168,106,.5);
+  font-size:var(--fs-13);color:var(--text-2);line-height:1.85;
+  background:linear-gradient(90deg,rgba(201,168,106,.05),transparent 75%);
+}
+
+/* 危机入口 */
+.urgent{
+  margin-top:28px;padding:24px 0 8px;
+  border-top:1px solid rgba(201,168,106,.4);border-bottom:1px solid var(--line);
+}
+.urgent h2{
+  font-family:var(--font-serif);font-size:var(--fs-18);font-weight:400;color:var(--text);
+}
+.urgent .lead{margin-top:8px;font-size:var(--fs-13);color:var(--muted);line-height:1.8}
+.urgent ul{margin-top:18px}
+.urgent li{
+  display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:baseline;
+  padding:14px 0;border-top:1px solid var(--line);
+}
+.urgent li:first-child{border-top:none}
+.urgent .num{
+  font-family:var(--font-serif);font-size:var(--fs-26);font-weight:400;
+  color:var(--gold);letter-spacing:.02em;line-height:1.1;font-variant-numeric:tabular-nums;
+}
+.urgent .num small{
+  font-family:var(--font-mono);font-size:var(--fs-12);color:var(--muted);display:block;margin-top:6px;letter-spacing:.02em;
+}
+.urgent .what{font-size:var(--fs-13);color:var(--text-2);line-height:1.75}
+.urgent .what b{color:var(--text);font-weight:400;font-family:var(--font-serif)}
+.urgent .foot{margin:8px 0 18px;font-size:var(--fs-12);color:var(--muted);line-height:1.8}
+
+/* 两栏 */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:52px;padding:32px 0 6px}
+.two .block h2{
+  font-family:var(--font-serif);font-size:var(--fs-18);font-weight:400;color:var(--text);
+  padding-bottom:12px;border-bottom:1px solid var(--line);
+}
+
+/* 结尾 */
+.coda{
+  margin-top:54px;padding-top:30px;border-top:1px solid var(--line);
+  display:flex;align-items:flex-end;justify-content:space-between;gap:30px;
+}
+.coda .line{
+  font-family:var(--font-serif);font-size:var(--fs-21);font-weight:400;
+  line-height:1.7;color:var(--text-2);letter-spacing:.02em;max-width:30ch;
+}
+.coda .acts{display:flex;gap:8px;flex-wrap:wrap}
+.coda .fine{margin-top:18px;font-size:var(--fs-12);color:var(--muted-2);line-height:1.8}
+
+.page-foot{
+  position:relative;z-index:1;max-width:880px;margin:0 auto;padding:18px 32px 40px;
+  border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  font-size:var(--fs-12);color:var(--muted-2);
+}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+@media (max-width:900px){
+  .safety-head{padding-right:0}
+  .safety-head .head-note{display:none}
+  .safety{padding:44px 22px 64px}
+  .page-foot{padding:16px 22px 34px}
+}
+@media (max-width:640px){
+  .safety-exit{top:10px;right:12px}
+  .safety{padding:34px 18px 56px}
+  .hero h1{font-size:var(--fs-34)}
+  .urgent li{grid-template-columns:1fr;gap:8px;padding:18px 0}
+  .two{grid-template-columns:1fr;gap:34px}
+  .coda{flex-direction:column;align-items:flex-start}
+  .page-foot{flex-direction:column;align-items:flex-start;gap:6px;padding:16px 18px 30px}
+}
+</style>
+</head>
+<body>
+<div class="astral"></div>
+<div class="sky" aria-hidden="true"><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><i class="l5"></i><i class="l6"></i></div>
+<div class="veil"></div>
+
+<a class="safety-exit" href="/">← 回到对话</a>
+
+<main class="safety">
+  <div class="safety-head">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.6C12.9 8.1 15.9 11.1 21.4 12C15.9 12.9 12.9 15.9 12 21.4C11.1 15.9 8.1 12.9 2.6 12C8.1 11.1 11.1 8.1 12 2.6Z" fill="currentColor"/></svg>
+    </span>
+    <span class="brand-name">Olivia</span>
+    <span class="head-note">安全 · 边界 · AI 披露</span>
+  </div>
+
+  <section class="hero">
+    <p class="kicker"><span class="diamond"></span>安全 · SAFETY</p>
+    <h1>她陪你把牌读完，<br>但不替你决定，也不替代专业帮助。</h1>
+    <p class="sub">这一页把 Olivia 是什么、能做什么、做不到什么，坦白讲清楚。完整版本见仓库根目录的 <b>SAFETY.md</b>。</p>
+  </section>
+
+  <!-- 显式的文字披露，不依赖 CSS 伪元素生成 -->
+  <section class="disclosure" aria-label="AI 身份披露">
+    <p><b>AI 身份披露：</b>Olivia 是一个人工智能程序，不是持证心理治疗师、心理咨询师，也不是医生、律师或财务顾问。她的解读只用于娱乐与自我反思辅助——不是诊断、不是预测、不是专业意见。</p>
+    <span class="fine">涉及健康、法律、财务或人身安全的决定，请以持证专业人士的意见为准。</span>
+  </section>
+
+  <section class="panel" aria-labelledby="gate-h">
+    <h2 id="gate-h">代码级危机闸门 <span class="en">SAFETY GATE</span></h2>
+    <p class="lead">这是写在服务端代码里的检查，不是提示词里的请求。它位于 <span class="mono">/api/chat</span> 入口，早于视觉、抽牌、模型调用和记忆写入执行。</p>
+    <ul>
+      <li>识别五类情况：<b>自伤 / 轻生、他人施暴或威胁、性侵、伤害他人的性意图、伤害他人</b>。</li>
+      <li>一旦命中，Olivia <b>不解读牌、不调用模型、不把原文写进记忆或会话簿</b>，而是先给出支持性回应与现实求助资源。</li>
+      <li>闸门在服务端，浏览器端看不到触发词，也不能跳过。</li>
+      <li>它做了基本的误报抑制：明确否定句和梦境 / 虚构语境通常不会触发。</li>
+    </ul>
+    <p class="note"><b>重要限制：</b>这套检测基于正则关键词，会漏掉隐喻、谐音、间接表达和中英混写的变体；可选的「二次判断」默认关闭。<b>不要把这条闸门当作安全网</b>——如果你或身边的人正处于危险中，请直接联系现实中的紧急服务，不要等程序先识别出来。红队套件收录 267 个对抗用例，并公开记录了 70 个已知缺口，这是持续进行中的工作。</p>
+  </section>
+
+  <section class="urgent" aria-label="紧急求助资源">
+    <h2>遇到危机，先找现实中的帮助</h2>
+    <p class="lead">如果有立即的人身危险，先打电话。牌可以等，安全不能等。</p>
+    <ul>
+      <li>
+        <div class="num">110 / 120<small>中国大陆</small></div>
+        <div class="what"><b>报警 / 急救</b><span>有人正在伤害你、已经受伤或服药过量时，先打当地紧急电话。</span></div>
+      </li>
+      <li>
+        <div class="num">911<small>美国 / 加拿大</small></div>
+        <div class="what"><b>紧急电话</b><span>其他地区请拨打当地紧急号码；不确定打哪一个时，优先打紧急电话。</span></div>
+      </li>
+      <li>
+        <div class="num">ER<small>急诊</small></div>
+        <div class="what"><b>去最近的医院急诊</b><span>已经受伤、服药过量或失去意识时，不要等待「确认严重」。</span></div>
+      </li>
+    </ul>
+    <p class="foot">也可以先给一个信得过的人发一句：<b>「我现在需要你陪我。」</b>危机热线号码会随地区与时间变化，请查找你当地当前公布的危机干预 / 心理援助热线——本页刻意不列出可能过期的具体号码。如果情况紧急，请直接走上面的步骤。</p>
+  </section>
+
+  <section class="panel" aria-labelledby="bounds-h">
+    <h2 id="bounds-h">Olivia 不会做的事 <span class="en">BOUNDARIES</span></h2>
+    <ul>
+      <li><b>不预测具体未来事件</b>：不预测日期、输赢、生死。只有显式开启「预言模式」时才会以娱乐口吻谈论预测，且明确标注「仅供娱乐」。</li>
+      <li><b>不替你做决定</b>：不替你选工作、伴侣或人生方向；下一步需要你亲自确认。</li>
+      <li><b>不给医疗、法律、财务建议</b>：不替代诊断、治疗、法律意见或投资建议。</li>
+      <li><b>不提供有害的仪式指令</b>：即使开启「神秘模式」，也只给象征性、文化性视角，不提供伤害自己或他人、或替代正规医疗的「仪式」步骤。</li>
+      <li><b>遇到危机停止占卜</b>：在风险面前，牌局让位于人和安全。</li>
+    </ul>
+  </section>
+
+  <section class="panel" aria-labelledby="privacy-h">
+    <h2 id="privacy-h">数据与隐私 <span class="en">PRIVACY</span></h2>
+    <ul>
+      <li><b>本地优先：</b>对话、记忆、抽牌历史存放在本机，项目自身没有遥测或分析服务器。</li>
+      <li><b>危机原文不入库：</b>闸门命中时，原文不会写入记忆、会话簿或占卜档案。</li>
+      <li><b>模型服务商：</b>正常解读会把对话上下文发给你配置的第三方模型；开启视觉桥后图片会发给第三方 VLM，受该服务商留存政策约束。</li>
+      <li><b>局域网是明文 HTTP：</b>把服务绑定到 <span class="mono">0.0.0.0</span> 后，同网络可能看到配对码与对话。请只在可信网络临时使用，不要把端口映射到公网；详细加固见仓库根目录 <span class="mono">SECURITY.md</span>。</li>
+    </ul>
+  </section>
+
+  <div class="two">
+    <section class="block" aria-labelledby="report-h">
+      <h2 id="report-h">反馈安全问题</h2>
+      <ul>
+        <li>一般安全边界、文档或行为问题：到 GitHub 仓库 <b>Him-Wang/tarot-counselor</b> 开 <b>Issue</b>。</li>
+        <li>请勿在 issue 中粘贴真实对话、记忆或密钥。</li>
+        <li>可复现的安全漏洞：不要公开 issue，按 <span class="mono">SECURITY.md</span> 的说明用 GitHub <b>Security Advisory</b> 私密报告。</li>
+      </ul>
+    </section>
+    <section class="block" aria-labelledby="read-h">
+      <h2 id="read-h">继续阅读</h2>
+      <ul>
+        <li><a href="/care">关怀 / 危机资源（/care）</a></li>
+        <li><a href="/cards">看看牌义（/cards）</a></li>
+        <li>完整版：<b>SAFETY.md</b>（仓库根目录）</li>
+        <li>技术威胁模型：<b>SECURITY.md</b>（仓库根目录）</li>
+      </ul>
+    </section>
+  </div>
+
+  <section class="coda">
+    <div>
+      <p class="line">牌不开口，人开口。<br>安全永远先于占卜。</p>
+      <p class="fine">本页是 SAFETY.md 的精简版。内容采用 CC BY-NC-SA 4.0 许可。</p>
+    </div>
+    <div class="acts">
+      <a class="btn btn--quiet" href="/care">危机资源</a>
+      <a class="btn btn--gold" href="/">回到 Olivia</a>
+    </div>
+  </section>
+</main>
+
+<footer class="page-foot">
+  <span><span class="mono">127.0.0.1:8765</span> · 本地优先</span>
+  <span>危机原文不入库 · AI 披露 · 不替你决定</span>
+</footer>
+<script>
+document.querySelector('.page-foot .mono')?.replaceChildren(location.host);
+</script>
+</body>
+</html>

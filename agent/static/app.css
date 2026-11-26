@@ -1058,3 +1058,16 @@ html[lang="en"] .rail-quote{
 .emotion-ask-row button{font-size:12px;padding:7px 12px}
 .emotion-ask-done{font-size:var(--fs-small);color:var(--ok)}
 .emotion-ask-err{font-size:var(--fs-caption);color:var(--danger)}
+
+/* ---------- 演示模式提示条（默认隐藏，由 /api/config 的 demo 标志显示） ---------- */
+.demo-banner{
+  position:fixed;top:0;left:0;right:0;z-index:60;
+  padding:8px 16px;text-align:center;
+  font-size:var(--fs-small);line-height:1.5;letter-spacing:.02em;
+  color:#1A1206;background:linear-gradient(90deg,#C99B57,#E2BE7A);
+  border-bottom:1px solid rgba(0,0,0,.35);
+  box-shadow:var(--sh-xs);
+}
+@media (max-width:640px){.demo-banner{padding:7px 10px;font-size:var(--fs-caption)}}
+/* 提示条可见时为外壳让出空间，避免盖住品牌与按钮（:has 不支持时退化为覆盖） */
+body:has(> .demo-banner:not([hidden])) .app{padding-top:38px}

@@ -34,8 +34,14 @@ python agent/server.py
 
 ```bash
 python -m compileall -q agent tests   # 先过一遍字节编译
-python tests/test_whitebox.py         # 纯函数与模块级，120 项
-python tests/test_blackbox.py         # 起真实服务发 HTTP 请求，57 项
+python tests/test_whitebox.py         # 纯函数与模块级，187 项
+python tests/test_blackbox.py         # 起真实服务发 HTTP 请求，75 项
+python tests/test_safety_redteam.py   # 安全闸门红队对抗，267 项（含已知缺口清单）
+python tests/test_mcp_http.py         # Streamable HTTP 传输，27 项
+python tests/test_backup_crypto.py    # 加密备份，8 项
+python tests/test_tls_server.py       # 局域网自签 HTTPS，7 项
+python tests/test_demo_mode.py        # 只读演示模式，48 项
+python tests/test_share_link.py       # 分享深链，22 项
 ```
 
 注意事项：

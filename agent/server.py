@@ -40,9 +40,16 @@ import archive
 import plugin_kb
 import plugin_vision
 import plugin_ocr
+import plugin_sight
 import auth
 import backup
+import backup_crypto
 import secret_store
+import tls_server
+import demo_mode
+import prompt_context
+import card_catalog as card_catalog_mod
+import draw_payloads
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_DIR = os.path.dirname(BASE_DIR)
@@ -51,7 +58,7 @@ PERSONA_DIR = os.path.join(REPO_DIR, "prompts")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 EXTRAS_LOG = os.path.join(BASE_DIR, "data", "extras.jsonl")
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # Filled in main(); loopback keeps auth disabled so local use stays frictionless.
 AUTH_STATE = {"enabled": False, "token": "", "throttle": auth.Throttle()}
@@ -133,6 +140,13 @@ DEFAULT_CONFIG = {
     "safety_second_check": False,  # 模糊表达时才额外调用一次分类
 }
 
+# 配置收敛（P3）：这几项是产品硬约束，不是用户偏好。
+# tools/tone/two_phase 在任何配置（含手工编辑或旧版本残留）里都强制为真；
+# 前端早已把它们渲染成「默认开启 · 不可关闭」。保留键名是为了向后兼容
+# 老客户端与白盒测试，但值不再受磁盘配置影响。memory_enabled 有自己的
+# 开关端点（/api/memory），所以不在这里强制。
+LOCKED_DEFAULTS = ("tools_enabled", "tone_enabled", "two_phase_draw")
+
 
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
@@ -147,7 +161,11 @@ def load_config():
     enc = str(cfg.pop("api_key_enc", "") or "")
     if not cfg.get("api_key") and enc:
         cfg["api_key"] = secret_store.unprotect(enc)
-    return cfg
+    for key in LOCKED_DEFAULTS:
+        cfg[key] = True
+    # 演示模式：配置在离开本函数前就被夹到安全基线（清 key、强制离线、关记忆）。
+    # 非演示进程下 enforce() 只返回浅拷贝，行为不变。
+    return demo_mode.enforce(cfg)
 
 
 def _saved_key_enc():
@@ -191,70 +209,24 @@ def _lang(cfg=None):
     return "en" if lang.startswith("en") else "zh"
 
 
-def _prompt_path(name, lang):
-    """prompts/<name>.<lang>.md，英文缺失时回退中文。"""
-    path = os.path.join(PERSONA_DIR, "%s.%s.md" % (name, lang))
-    if os.path.exists(path):
-        return path
-    return os.path.join(PERSONA_DIR, "%s.zh.md" % name)
-
-
 def load_persona(cfg=None):
-    try:
-        with open(_prompt_path("persona", _lang(cfg)), "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return "你是一名沉稳、专业的塔罗咨询师 Olivia（奥莉薇娅）。"
+    return prompt_context.load_persona(cfg)
 
 
 def load_prophecy(cfg=None):
-    """预言模式覆盖层（仅供娱乐），仅在开启时加载。"""
-    try:
-        with open(_prompt_path("prophecy", _lang(cfg)), "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    return prompt_context.load_prophecy(cfg)
 
 
 def load_occult(cfg=None):
-    """神秘学模式覆盖层：通灵 / 召唤 / 仪式这类话题的语境与边界，仅在用户开启时加载。"""
-    try:
-        with open(_prompt_path("occult", _lang(cfg)), "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    return prompt_context.load_occult(cfg)
 
 
 def load_tone(cfg=None):
-    """语气系统：让 Olivia 的措辞像一个真实女性塔罗师，并自然体现 NVC。"""
-    try:
-        with open(_prompt_path("tone", _lang(cfg)), "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
+    return prompt_context.load_tone(cfg)
 
 
 def now_context(cfg=None):
-    """把「现在几点」写进 system。
-
-    语气层要求建议落到具体时间（「今晚睡前」「明天上午」），但没有这个锚点，
-    模型只能猜今天是哪天。这里每轮现算，不用缓存。
-    """
-    now = datetime.datetime.now()
-    if _lang(cfg) == "en":
-        return (
-            "\n\n[Current time] It is %s %02d:%02d, %d-%02d-%02d. "
-            "Use this clock for relative times such as tonight, tomorrow or this week; "
-            "never guess a year from training data."
-            % (now.strftime("%A"), now.hour, now.minute, now.year, now.month, now.day)
-        )
-    week = "一二三四五六日"[now.weekday()]
-    return (
-        "\n\n【当前时间】现在是 %d年%d月%d日（星期%s）%02d:%02d。"
-        "涉及今天、今晚、明天、这周等相对时间的建议和定时提醒，都以这个时间为准；"
-        "不要使用你的训练数据里的日期，也不要编造年份。"
-        % (now.year, now.month, now.day, week, now.hour, now.minute)
-    )
+    return prompt_context.now_context(cfg)
 
 
 # ---- 两阶段抽牌：先出牌不解读，等来访者给出问题后再解读同一副牌 ----
@@ -401,161 +373,31 @@ def _spread_choice_from_reply(message):
 
 
 def _cards_payload(result):
-    """SSE 里推给前端的牌面数据（抽牌轮与解读轮共用）。"""
-    spread = result.get("spread", "")
-    return {
-        "spread": spread,
-        "spread_desc": result.get("spread_desc", ""),
-        "question": result.get("question", ""),
-        "seed": result.get("seed"),
-        "manual": bool(result.get("manual")),
-        "layout": result.get("layout") or spreads_mod.layout(spread),
-        "items": [{
-            "position": c.get("position", ""),
-            "position_meaning": c.get("position_meaning", ""),
-            "name": c.get("name", ""),
-            "orientation": c.get("orientation", ""),
-            "image": c.get("image", ""),
-        } for c in result.get("cards", [])],
-        "extras": [{
-            "position": c.get("position", "补牌"),
-            "position_meaning": c.get("position_meaning", ""),
-            "name": c.get("name", ""),
-            "orientation": c.get("orientation", ""),
-            "image": c.get("image", ""),
-            "reason": c.get("reason", ""),
-        } for c in (result.get("extras") or [])],
-    }
+    return draw_payloads._cards_payload(result)
 
 
 def _pick_payload(spread):
-    """选牌轮的舞台数据：牌阵、牌位与张数，由前端摆出扇形牌堆。"""
-    meta = spreads_mod.SPREAD_META.get(spread) or {}
-    positions = meta.get("positions") or []
-    return {
-        "spread": spread,
-        "spread_desc": meta.get("desc", ""),
-        "count": len(positions),
-        "layout": spreads_mod.layout(spread),
-        "positions": [{"name": p[0], "meaning": p[1]} for p in positions],
-    }
-
-
-_MAJOR_ELEMENTS = {
-    "愚者": "风", "魔术师": "风", "女祭司": "水", "皇后": "土",
-    "皇帝": "火", "教皇": "土", "恋人": "风", "战车": "水",
-    "力量": "火", "隐者": "土", "命运之轮": "火", "正义": "风",
-    "倒吊人": "水", "死神": "水", "节制": "火", "恶魔": "土",
-    "塔": "火", "星星": "风", "月亮": "水", "太阳": "火",
-    "审判": "火", "世界": "土",
-}
-_MAJOR_ROMAN = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII",
-                "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI",
-                "XVII", "XVIII", "XIX", "XX", "XXI"]
-_CARD_SUITS = {"权杖": ("wands", "火"), "圣杯": ("cups", "水"),
-               "宝剑": ("swords", "风"), "星币": ("pentacles", "土")}
+    return draw_payloads._pick_payload(spread)
 
 
 def _brief_card(text, limit=72):
-    """只把牌义的第一句发给浏览器；完整原文留在服务端。"""
-    t = " ".join(str(text or "").split())
-    if not t:
-        return ""
-    m = re.match(r"^.*?[。！？；]", t)
-    head = m.group(0) if m else t
-    if head.endswith("；"):
-        head = head[:-1] + "。"
-    if len(head) > limit:
-        head = head[:limit].rstrip("，、；：—-") + "…"
-    return head
+    return card_catalog_mod._brief_card(text, limit)
 
 
 def card_catalog():
-    """78 张牌的目录：名字/图片/花色/数字/元素 + knowledge/ 里的牌义。"""
-    out = []
-    for name in tools.DECK:
-        image = tools.card_image(name)
-        if not image:
-            continue
-        cid = os.path.splitext(os.path.basename(image))[0]
-        entry = knowledge.get_card_entry(name)
-        if name in _MAJOR_ELEMENTS:
-            idx = tools.DECK.index(name)
-            out.append({
-                "id": cid, "name": name, "image": image, "group": "major",
-                "deck": "大阿卡纳", "num": _MAJOR_ROMAN[idx],
-                "element": _MAJOR_ELEMENTS[name],
-                "core": entry["core"],
-                "brief_up": _brief_card(entry["up"]),
-                "brief_rev": _brief_card(entry["rev"]),
-            })
-            continue
-        suit = name[:2]
-        slug, element = _CARD_SUITS.get(suit, ("", ""))
-        out.append({
-            "id": cid, "name": name, "image": image, "group": slug,
-            "deck": "小阿卡纳 · " + suit, "num": name[2:],
-            "element": element,
-            "core": entry["core"],
-            "brief_up": _brief_card(entry["up"]),
-            "brief_rev": _brief_card(entry["rev"]),
-        })
-    return out
+    return card_catalog_mod.card_catalog()
 
 
 def _add_usage(totals, usage):
-    """把一轮（可能多次调用）的用量累加进来；拿不到用量就什么都不做。"""
-    if not isinstance(usage, dict):
-        return
-    for k in ("in", "out", "total"):
-        try:
-            totals[k] += int(usage.get(k) or 0)
-        except Exception:
-            pass
+    return draw_payloads._add_usage(totals, usage)
 
 
 def _pending_context(result, question):
-    """解读轮注入的硬约束：解读眼前这副牌，不重抽、不换牌。"""
-    extras = result.get("extras") or []
-    lines = [
-        "【本轮解牌约束 · 必须遵守】",
-        "来访者上一轮已经抽出一副牌，本轮才给出问题。请只解读下面这副已抽出的牌，",
-        ("不得重新抽牌、换牌，也不得再补牌、凭记忆换用别的牌面。" if not extras else
-         "不得重新抽牌、换牌，也不得凭记忆换用别的牌面。"),
-        "牌阵：%s（%s）" % (result.get("spread", "未注明"), result.get("spread_desc", "")),
-        "牌面与随牌传统牌意：",
-    ]
-    for i, c in enumerate(result.get("cards") or [], 1):
-        lines.append("%d. %s（%s）：%s %s" % (
-            i, c.get("position", ""), c.get("position_meaning", ""),
-            c.get("name", ""), c.get("orientation", "")))
-        meaning = c.get("meaning", "")
-        if meaning:
-            lines.append("   传统牌意：" + str(meaning).replace("\n", " "))
-    if extras:
-        lines.append("来访者本轮主动要求补牌，理由是：%s" % (
-            "；".join(e.get("reason") or "（未说明理由）" for e in extras)))
-        for e in extras:
-            lines.append("补牌｜%s（%s）" % (e.get("name", ""), e.get("orientation", "")))
-            meaning = e.get("meaning", "")
-            if meaning:
-                lines.append("   传统牌意：" + str(meaning).replace("\n", " "))
-        lines.append("补牌只能作为补充视角，放在原牌之后解读：不得据此替换或否定原来的牌，"
-                     "也不得再自行增补。")
-    lines.append("来访者的问题：%s" % (question or ""))
-    lines.append("请按「原本牌意 → 牌阵位置 → 对应问题 → 落到情境」逐张解读；"
-                 "这段牌面是既定依据，不可自行编造或替换。")
-    return "\n".join(lines)
+    return draw_payloads._pending_context(result, question)
 
 
-ASK_AFTER_DRAW = (
-    "好的，牌已经抽出来了——你有什么问题吗？"
-    "告诉我你想问什么，我就照着这副牌为你解读。"
-)
-
-# 抽牌轮的开场白：前端会把它打字机式地逐字打出，稍作停顿再翻牌，
-# 让「默念问题 → 翻牌 → 提问」有真正的仪式节奏。
-MEDITATE_TEXT = "好的，请在心中默念你的问题……"
+ASK_AFTER_DRAW = draw_payloads.ASK_AFTER_DRAW
+MEDITATE_TEXT = draw_payloads.MEDITATE_TEXT
 
 
 
@@ -664,6 +506,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = self.path.split("?")[0]
+        if demo_mode.enabled():
+            demo_mode.reset_in_memory_state(
+                _pending_draws, _awaiting_spread, _last_spreads, _pending_archive)
 
         # ---- PWA / 拆分后的静态资源（不需要鉴权）----
         if p == "/manifest.webmanifest":
@@ -699,6 +544,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_static(BASE_DIR, "care.html",
                               "text/html; charset=utf-8", "no-cache")
             return
+        if p in ("/safety", "/safety/"):
+            self._send_static(BASE_DIR, "safety.html",
+                              "text/html; charset=utf-8", "no-cache")
+            return
         if p in ("/", "/index.html"):
             try:
                 with open(INDEX_HTML, "rb") as f:
@@ -732,7 +581,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({
                 "config": mask(cfg),
                 "presets": PRESETS,
-                "docs": knowledge.list_docs(include_occult=load_config().get("occult_enabled", False)),
+                "docs": knowledge.list_docs(
+                    include_occult=cfg.get("occult_enabled", False), lang=_lang(cfg)),
                 "spreads": spreads_mod.list_spreads(),
                 "usage": memory.usage_today(),
                 "version": VERSION,
@@ -740,20 +590,38 @@ class Handler(BaseHTTPRequestHandler):
                     "required": AUTH_STATE["enabled"],
                     "paired": self._authorized(),
                 },
+                **demo_mode.public_config(),
             })
-        elif p == "/api/backup":
+        elif p in ("/api/backup", "/api/backup/encrypted"):
             payload = backup.build(BASE_DIR)
-            body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            raw = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            if p == "/api/backup/encrypted":
+                # 口令只经请求头传入，不落盘、不进查询串、不写日志。
+                # 没给口令就明确拒绝，绝不退回明文（避免"以为加密了其实没加密"）。
+                phrase = self.headers.get("X-Olivia-Passphrase", "")
+                if not phrase:
+                    self._send_json(
+                        {"ok": False, "error": "缺少 X-Olivia-Passphrase 请求头"}, 400)
+                    return
+                try:
+                    raw = backup_crypto.encrypt(raw, phrase)
+                except Exception as e:
+                    self._send_json({"ok": False, "error": str(e)}, 400)
+                    return
+                filename, ctype = "olivia-backup.olivia", "application/octet-stream"
+            else:
+                filename, ctype = "olivia-backup.json", "application/json; charset=utf-8"
             self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Type", ctype)
             self.send_header("Content-Disposition",
-                             'attachment; filename="olivia-backup.json"')
-            self.send_header("Content-Length", str(len(body)))
+                             'attachment; filename="%s"' % filename)
+            self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
-            self.wfile.write(body)
+            self.wfile.write(raw)
         elif p == "/api/knowledge":
+            cfg = load_config()
             self._send_json({"docs": knowledge.list_docs(
-                include_occult=load_config().get("occult_enabled", False))})
+                include_occult=cfg.get("occult_enabled", False), lang=_lang(cfg))})
         elif p.startswith("/cards/"):
             self._send_static(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards"),
                               p[len("/cards/"):], "image/jpeg")
@@ -795,18 +663,16 @@ class Handler(BaseHTTPRequestHandler):
                     "notes": plugin_kb.list_notes(limit=200),
                     "stats": plugin_kb.stats(),
                 },
-                "vision": {
-                    "config": plugin_vision.masked_config(),
-                    "configured": plugin_vision.is_configured(),
-                    "providers": plugin_vision.known_providers(),
-                    "ocr": plugin_ocr.available(),
-                },
+                "vision": plugin_sight.settings(),
             })
         else:
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
         p = self.path.split("?")[0]
+        if demo_mode.enabled():
+            demo_mode.reset_in_memory_state(
+                _pending_draws, _awaiting_spread, _last_spreads, _pending_archive)
         body = self._body()
 
         # ---- 配对：唯一不需要既有 Cookie 的 POST ----
@@ -832,6 +698,17 @@ class Handler(BaseHTTPRequestHandler):
             self._deny()
             return
 
+        # 只读演示模式：纯写端点一律拒绝（403），/api/chat 与 /api/pick 是演示主流程，
+        # 保留但在内部用 should_persist() 跳过落库。
+        if demo_mode.enabled() and p in (
+                "/api/config", "/api/backup", "/api/memory", "/api/schedule",
+                "/api/goals", "/api/archive", "/api/plugins"):
+            try:
+                demo_mode.guard_write("POST " + p)
+            except demo_mode.DemoReadOnly as e:
+                self._send_json({"ok": False, "error": str(e)}, 403)
+                return
+
         if p == "/api/config":
             cfg = load_config()
             for k in ("backend", "protocol", "base_url", "api_key", "model", "temperature", "timeout",
@@ -856,7 +733,15 @@ class Handler(BaseHTTPRequestHandler):
 
         elif p == "/api/backup":
             try:
-                counts = backup.restore(body, BASE_DIR)
+                payload = body
+                # 加密导入：body 是 {"encrypted": true, "passphrase": "...", "blob": [...]}。
+                # blob 以数字数组传来（JSON 无法直接放 bytes）；导入成功/口令错都给明确回执。
+                if body.get("encrypted"):
+                    blob = bytes(int(b) for b in (body.get("blob") or []))
+                    phrase = str(body.get("passphrase") or "")
+                    raw = backup_crypto.decrypt(blob, phrase)
+                    payload = json.loads(raw.decode("utf-8"))
+                counts = backup.restore(payload, BASE_DIR)
                 self._send_json({"ok": True, "counts": counts})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)}, 400)
@@ -908,10 +793,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             result = tools.draw_cards(spread=spread, picks=clean[:need])
             _pending_draws[sid] = {"result": result, "at": time.time()}
-            try:
-                memory.record_draw(result, "")
-            except Exception as e:
-                print("[pick] record draw failed: %s" % e)
+            if demo_mode.should_persist():
+                try:
+                    memory.record_draw(result, "")
+                except Exception as e:
+                    print("[pick] record draw failed: %s" % e)
             self._send_json({
                 "ok": True,
                 "cards": _cards_payload(result),
@@ -925,6 +811,9 @@ class Handler(BaseHTTPRequestHandler):
             sid = str(body.get("session_id") or "default")
             cfg = load_config()
             cfg["api_key"] = _effective_api_key(cfg, body.get("api_key"))
+            if demo_mode.enabled():
+                # 演示模式下 body 注入的 key 必须被再次剥掉，杜绝单次请求偷跑联网。
+                cfg = demo_mode.enforce(cfg)
             # 离线整理降级：没有可用 key（或模型调用失败）时，不伪装 AI，
             # 只客观整理本地已抽的牌。抽牌本身永远可用，与这个标志无关。
             _offline = offline.is_offline(cfg)
@@ -987,46 +876,11 @@ class Handler(BaseHTTPRequestHandler):
                        if not (isinstance(h, dict)
                                and _safety.detect(str(h.get("content", ""))))]
 
-            # ---- vision bridge: cloud VLM describes images, feed text to main model ----
-            # 没配云端视觉模型时退到本机 OCR：截图里的字先读出来，主模型照样能接话。
-            vision_ctx = ""
-            ocr_text = ""
-            if images:
-                if plugin_vision.is_configured():
-                    vcfg = plugin_vision.get_vision_config()
-                    for img in images[:3]:
-                        try:
-                            desc = plugin_vision.describe_image(img, vcfg, question=message)
-                            if desc:
-                                vision_ctx += plugin_vision.build_context(desc, message) + "\n"
-                        except Exception as ve:
-                            # m10: log the detail locally; never leak paths/URLs/keys
-                            # into the system prompt or the reply stream.
-                            print("[vision] describe_image failed: %s" % ve)
-                            vision_ctx += "【图片识别失败，已略过图片内容】\n"
-                else:
-                    ocr_texts = []
-                    for img in images[:3]:
-                        try:
-                            txt = plugin_ocr.recognize(img)
-                        except Exception as oe:
-                            print("[ocr] recognize failed: %s" % oe)
-                            txt = ""
-                        if txt.strip():
-                            ocr_texts.append(txt)
-                    if ocr_texts:
-                        ocr_text = "\n\n".join(ocr_texts)
-                        vision_ctx = plugin_ocr.build_context(ocr_text, message)
-                        print("[ocr] local OCR read %d image(s), %d chars"
-                              % (len(ocr_texts), sum(len(t) for t in ocr_texts)))
-                    elif plugin_ocr.available().get("ok"):
-                        vision_ctx = ("【用户发来一张图片】本机没有配置云端视觉模型，"
-                                      "本机 OCR 也没在图上读到文字（这可能不是文字截图，"
-                                      "或是纯画面）。看不清就先请用户用一两句话说说图上是什么。")
-                    else:
-                        vision_ctx = ("【用户发来一张图片】本机既没有配置云端视觉模型，"
-                                      "也没有可用的本地 OCR。请如实告诉用户现在看不了图，"
-                                      "并建议在设置里填一个视觉模型的 key。")
+            # ---- vision bridge（统一看图管线）：本机 OCR 优先，云端视觉按需升级 ----
+            # plugin_sight 把 OCR / VLM 两条通道收成一个入口；详见其模块文档。
+            sight = plugin_sight.describe(images, question=message)
+            vision_ctx = sight.context
+            ocr_text = sight.note
 
             # explicit "forget" command -> handled locally, streamed as a reply
             import re as _re
@@ -1093,11 +947,12 @@ class Handler(BaseHTTPRequestHandler):
                         card = extra["card"]
                         pending_result.setdefault("extras", []).append(card)
                         _last_spreads[sid] = {"result": pending_result, "at": time.time()}
-                        _record_extra(sid, pending_result, card)
+                        if demo_mode.should_persist():
+                            _record_extra(sid, pending_result, card)
 
-            # retrieve relevant knowledge for this turn
+            # retrieve relevant knowledge for this turn（按界面语言取对应语料，缺失回退中文）
             context, used = knowledge.retrieve(
-                message, include_occult=cfg.get("occult_enabled", False))
+                message, include_occult=cfg.get("occult_enabled", False), lang=_lang(cfg))
             system = load_persona(cfg) + now_context(cfg)
             # 语气系统：Olivia 的"声音"——真实女性塔罗师的措辞 + 自然 NVC。
             # 放在人格之后、其余上下文之前，确保它稳定地盖住表达方式。
@@ -1418,15 +1273,16 @@ class Handler(BaseHTTPRequestHandler):
                     # ---- end agentic loop ----
                 if usage_totals["total"]:
                     emit({"usage": usage_totals})
-                    try:
-                        memory.add_usage(usage_totals["in"], usage_totals["out"])
-                    except Exception:
-                        pass
+                    if demo_mode.should_persist():
+                        try:
+                            memory.add_usage(usage_totals["in"], usage_totals["out"])
+                        except Exception:
+                            pass
                 # 解读轮收尾：把这一副牌排进档案队列，等来访者亲口说情绪词再落 JSON。
                 # 只在真正完成了解读（full 里有模型/离线正文）且不是抽牌/提问轮时排队；
                 # 情绪未得到答复前不写档案，Olivia 也不代选。
                 if (reading_round and pending_result is not None and full
-                        and preset_reply is None):
+                        and preset_reply is None and demo_mode.should_persist()):
                     try:
                         _pending_archive[sid] = {
                             "question": str(message or "").strip(),
@@ -1440,7 +1296,8 @@ class Handler(BaseHTTPRequestHandler):
                         pass
                 emit({"done": True})
                 # persist this turn (rule-based extraction, ~0 ms) after stream
-                if cfg.get("memory_enabled", True) and full and preset_reply is None:
+                if (cfg.get("memory_enabled", True) and full and preset_reply is None
+                        and demo_mode.should_persist()):
                     try:
                         memory.remember(message, "".join(full), draw=turn_draw)
                     except Exception:
@@ -1744,22 +1601,40 @@ def main():
     if AUTH_STATE["enabled"]:
         AUTH_STATE["token"] = auth.load_or_create(BASE_DIR)
     srv = ThreadingHTTPServer((host, port), Handler)
-    scheduler.start(load_config)
+    scheme = "http"
+    # 局域网 HTTPS（可选）：AGENT_TLS=1 时自签一张证书裹住 HTTP 服务。
+    # 自签只能加密传输、不等于身份验证，浏览器会提示不受信任，需手动放行。
+    if os.environ.get("AGENT_TLS", "").strip().lower() in ("1", "true", "yes", "on"):
+        try:
+            data_dir = os.path.join(BASE_DIR, "data")
+            cert, key = tls_server.ensure_cert(data_dir, host=host)
+            tls_server.wrap_httpd(srv, cert, key)
+            scheme = "https"
+            print("局域网 HTTPS 已开启，自签证书：%s" % cert)
+        except Exception as e:
+            print("[tls] 无法开启 HTTPS，退回 HTTP：%s" % e)
+    if demo_mode.enabled():
+        print(demo_mode.startup_notice())
+    else:
+        scheduler.start(load_config)
     # PID 文件：供安装包的 uninstall 精确停止本服务（不误杀其它 python server.py）
-    pid_path = os.path.join(BASE_DIR, "olivia.pid")
-    try:
-        with open(pid_path, "w", encoding="utf-8") as f:
-            f.write(str(os.getpid()))
-    except Exception:
-        pid_path = None
+    # 演示模式不落任何 PID 文件，避免写盘。
+    pid_path = None
+    if demo_mode.should_persist():
+        pid_path = os.path.join(BASE_DIR, "olivia.pid")
+        try:
+            with open(pid_path, "w", encoding="utf-8") as f:
+                f.write(str(os.getpid()))
+        except Exception:
+            pid_path = None
     shown = "127.0.0.1" if host in ("", "0.0.0.0") else host
-    print("Olivia agent v%s running at http://%s:%d" % (VERSION, shown, port))
+    print("Olivia agent v%s running at %s://%s:%d" % (VERSION, scheme, shown, port))
     if host == "0.0.0.0" and AUTH_STATE["enabled"]:
         code = auth.pretty(AUTH_STATE["token"])
-        print("已对局域网开放：手机访问 http://<本机IP>:%d" % port)
+        print("已对局域网开放：手机访问 %s://<本机IP>:%d" % (scheme, port))
         print("配对码：%s（只需在手机/浏览器里输入一次）" % code)
-        print("也可直接打开 http://<本机IP>:%d/?token=%s"
-              % (port, AUTH_STATE["token"]))
+        print("也可直接打开 %s://<本机IP>:%d/?token=%s"
+              % (scheme, port, AUTH_STATE["token"]))
     elif host == "0.0.0.0":
         print("已对局域网开放：同网段的人也能打开，用完请改回默认。")
     print("Press Ctrl+C to stop.")

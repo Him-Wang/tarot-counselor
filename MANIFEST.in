@@ -1,0 +1,19 @@
+include README.md
+include README.en.md
+include LICENSE
+include LICENSE-CONTENT
+include COMMERCIAL.md
+include CHANGELOG.md
+include pyproject.toml
+include olivia_cli.py
+recursive-include agent *.py *.html *.ps1 *.js *.css *.svg *.webmanifest *.jpeg *.jpg *.png *.md
+include agent/config.example.json
+exclude agent/config.json
+recursive-include knowledge *.md *.txt
+recursive-include prompts *.md *.txt
+
+global-exclude __pycache__
+global-exclude *.py[cod]
+prune android
+prune installer
+prune docs/media

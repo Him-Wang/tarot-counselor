@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "olivia-tarot"
+version = "1.3.0"
+description = "Olivia — a local, stdlib-only tarot reader agent that does not decide for you"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "PolyForm-Noncommercial-1.0.0"}
+authors = [{name = "Him-Wang"}]
+keywords = ["tarot", "agent", "offline", "local", "stdlib"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+test = []
+
+[project.scripts]
+olivia = "olivia_cli:main"
+olivia-mcp = "olivia_cli:mcp_main"
+
+[project.urls]
+Homepage = "https://github.com/Him-Wang/tarot-counselor"
+Repository = "https://github.com/Him-Wang/tarot-counselor"
+Issues = "https://github.com/Him-Wang/tarot-counselor/issues"
+
+[tool.setuptools]
+include-package-data = false
+py-modules = ["olivia_cli"]
+packages = ["agent", "knowledge", "prompts"]
+
+# Setuptools auto-discovery ignores directories without __init__.py as
+# packages, so we point package-dir at the real folders and rely on
+# package-data patterns below to ship every data file.
+[tool.setuptools.package-dir]
+agent = "agent"
+knowledge = "knowledge"
+prompts = "prompts"
+
+[tool.setuptools.package-data]
+agent = [
+    "!config.json",
+    "cards/*.jpeg",
+    "cards/*.jpg",
+    "cards/SOURCE.md",
+    "static/*",
+    "*.html",
+    "config.example.json",
+    "toast.ps1",
+]
+knowledge = ["**/*.md", "*.md", "LICENSE"]
+prompts = ["*.md", "LICENSE"]

@@ -25,6 +25,11 @@ agent/data/
 *.db-shm
 agent/olivia.pid
 
+# Python packaging build output
+build/
+dist/
+*.egg-info/
+
 # Built installer output
 installer/dist/
 
