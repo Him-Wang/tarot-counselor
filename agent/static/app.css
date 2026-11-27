@@ -583,6 +583,11 @@ body.dark .safety-line,
   transition:color .15s var(--ease),border-color .15s var(--ease);
 }
 .b-acts button:hover{color:var(--gold-bright);border-color:rgba(201,168,106,.45)}
+.b-acts button.is-primary{
+  color:var(--gold-bright);border-color:rgba(201,168,106,.42);
+  background:rgba(201,168,106,.06);
+}
+.b-acts button.is-primary:hover{background:rgba(201,168,106,.14)}
 .b-hint{width:100%;margin-top:4px;font-size:12px;color:var(--muted-2)}
 .b-legend{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft)}
 .b-legend summary{
@@ -614,6 +619,14 @@ body.has-board .draw-wrap{display:none}
   font-size:12px;letter-spacing:.18em;color:var(--gold);
 }
 .draw-head b{font-weight:500;color:var(--text-2);letter-spacing:.05em;font-size:var(--fs-13)}
+.draw-stage-link{
+  align-self:flex-start;min-height:28px;margin-top:2px;padding:0 10px;
+  border:1px solid rgba(201,168,106,.42);border-radius:var(--radius-xs);
+  background:rgba(201,168,106,.06);color:var(--gold-bright);
+  font-size:12px;letter-spacing:.06em;cursor:pointer;
+  transition:background .15s var(--ease);
+}
+.draw-stage-link:hover{background:rgba(201,168,106,.14)}
 .draw-scroll{overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
 .draw-board{
   display:grid;gap:var(--gy,14px) var(--gx,14px);
@@ -746,6 +759,164 @@ body.has-board .draw-wrap{display:none}
   box-shadow:0 6px 18px rgba(0,0,0,.5), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.24);
 }
 .pick-fly-ghost .pc-glyph{color:var(--gold-dim);font-size:18px}
+
+/* ---------- 8b. 全屏牌阵舞台 ----------
+   仿参考仓库的大画布：中央 grid 牌阵 + 环绕弧形牌堆。原生 dialog 提供
+   top layer / 焦点 / Esc，牌面用 aspect-ratio 预留空间，动画只动 transform/opacity。 */
+dialog.stage-dialog{
+  position:fixed;inset:0;margin:0;padding:0;
+  width:100%;height:100dvh;max-width:none;max-height:none;
+  border:0;background:transparent;color:var(--text);
+  overflow:hidden;
+}
+dialog.stage-dialog:modal{overscroll-behavior:contain}
+dialog.stage-dialog::backdrop{
+  background:radial-gradient(120% 90% at 50% 0%, #171327 0%, #0a0910 62%, #06050b 100%);
+  overscroll-behavior:contain;
+}
+dialog.stage-dialog[open]{
+  display:flex;flex-direction:column;
+  animation:stageIn .28s var(--ease) both;
+}
+@keyframes stageIn{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+.stage-top{
+  flex:0 0 auto;display:flex;align-items:flex-start;justify-content:space-between;
+  gap:16px;padding:22px clamp(18px,4vw,48px) 10px;
+}
+.stage-kicker{font-size:11px;letter-spacing:.3em;color:var(--gold);text-transform:uppercase}
+.stage-heading h2{
+  margin:4px 0 2px;font-family:var(--font-serif);font-weight:400;
+  font-size:clamp(22px,3vw,32px);letter-spacing:.04em;
+}
+.stage-sub{font-size:var(--fs-12);color:var(--muted);line-height:1.6}
+.stage-close,.sm-close{
+  flex:0 0 auto;min-width:40px;min-height:40px;
+  border:1px solid var(--line-2);border-radius:50%;
+  background:rgba(8,7,13,.5);color:var(--text-2);font-size:16px;
+  cursor:pointer;transition:color .15s,border-color .15s;
+}
+.stage-close:hover,.sm-close:hover{color:var(--gold-bright);border-color:rgba(201,168,106,.5)}
+
+.stage-plane{
+  flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;
+  padding:6px clamp(12px,4vw,48px) 18px;
+  scrollbar-width:thin;scrollbar-color:rgba(232,226,214,.18) transparent;
+}
+.stage-center{position:relative;width:100%;max-width:960px;margin:0 auto;min-height:70vh}
+.stage-grid-scroll{overflow-x:auto;overscroll-behavior-x:contain;padding:0 0 8px}
+.stage-grid{
+  display:grid;
+  grid-template-columns:repeat(var(--cols,3),var(--scw,96px));
+  grid-template-rows:repeat(var(--rows,1),var(--sch,163px));
+  gap:var(--gy,14px) var(--gx,10px);
+  width:max-content;min-width:100%;justify-content:center;margin:0 auto;
+  padding-top:var(--deck-space,150px);
+}
+.stage-cell{
+  position:relative;grid-column:var(--c);grid-row:var(--r);
+  width:var(--scw,96px);height:var(--sch,163px);
+  transform:rotate(var(--rot,0deg));z-index:var(--z,1);
+}
+.stage-slot{
+  width:100%;height:100%;border:1px dashed rgba(201,168,106,.28);
+  border-radius:5px;background:rgba(201,168,106,.03);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:6px;text-align:center;
+}
+.stage-slot .ss-num{font-family:var(--font-mono);font-size:12px;color:var(--gold-dim)}
+.stage-slot .ss-name{font-size:var(--fs-12);color:var(--muted);line-height:1.35}
+.stage-card{
+  width:100%;height:100%;border:0;border-radius:5px;overflow:hidden;
+  padding:0;background:var(--panel-3);cursor:pointer;
+  box-shadow:0 16px 30px -14px rgba(0,0,0,.92), 0 0 0 1px rgba(201,168,106,.3);
+  transform-style:preserve-3d;transition:box-shadow .2s var(--ease),transform .2s var(--ease);
+  animation:cardDeal .4s var(--ease) both;
+}
+.stage-card:hover{transform:translateY(-4px);box-shadow:0 22px 38px -14px rgba(0,0,0,.95), 0 0 0 1px rgba(201,168,106,.6)}
+.stage-card img{width:100%;height:100%;object-fit:cover;display:block}
+.stage-card img.rev{transform:rotate(180deg) scale(1.004)}
+.stage-card .sc-num{
+  position:absolute;left:5px;top:5px;z-index:2;
+  min-width:19px;height:19px;padding:0 4px;border-radius:3px;
+  display:grid;place-items:center;font-family:var(--font-mono);font-size:11px;
+  color:var(--gold-bright);background:rgba(8,7,13,.72);
+}
+@keyframes cardDeal{from{opacity:0;transform:translateY(-16px) scale(.9)}to{opacity:1;transform:none}}
+
+/* 环绕弧形牌堆：绝对罩在牌阵上方，牌沿椭圆弧重叠排开、无硬边框 */
+.stage-deck{
+  position:absolute;left:50%;top:0;transform:translateX(-50%);
+  width:100%;height:var(--deck-space,150px);
+  pointer-events:none;z-index:60;
+}
+.stage-deck.is-dragging{cursor:grabbing}
+.stage-deck-card{
+  position:absolute;left:50%;top:var(--deck-cy,76px);
+  width:var(--deck-cw,58px);aspect-ratio:420/711;
+  padding:0;border:0;border-radius:7px;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(240,214,150,.22) 0%, transparent 46%),
+    radial-gradient(1px 1px at 22% 18%, rgba(255,255,255,.85) 50%, transparent 52%),
+    radial-gradient(1px 1px at 78% 26%, rgba(255,244,214,.75) 50%, transparent 52%),
+    radial-gradient(1.5px 1.5px at 30% 76%, rgba(214,226,255,.7) 50%, transparent 52%),
+    repeating-linear-gradient(45deg, rgba(201,168,106,.07) 0 5px, transparent 5px 11px),
+    linear-gradient(168deg, #1c1830 0%, #131126 55%, #0d0b18 100%);
+  box-shadow:0 4px 10px rgba(0,0,0,.55), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.22);
+  transform:translate(-50%,-50%) translate(var(--tx),var(--ty)) rotate(var(--rot));
+  transform-origin:50% 100%;pointer-events:auto;cursor:pointer;
+  transition:box-shadow .18s var(--ease);
+  will-change:transform;
+}
+.stage-deck-card:hover{box-shadow:0 12px 22px rgba(0,0,0,.6), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.6)}
+.stage-deck-card .pc-glyph{
+  position:absolute;inset:0;display:grid;place-items:center;
+  color:var(--gold-dim);font-size:15px;opacity:.72;pointer-events:none;
+}
+.stage-deck-card.picked{pointer-events:none}
+.stage-fly-ghost{
+  position:fixed;z-index:10000;width:52px;height:88px;pointer-events:none;
+  border-radius:7px;display:grid;place-items:center;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(240,214,150,.22) 0%, transparent 46%),
+    linear-gradient(168deg, #1c1830 0%, #131126 55%, #0d0b18 100%);
+  box-shadow:0 6px 18px rgba(0,0,0,.5), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.24);
+}
+.stage-fly-ghost .pc-glyph{color:var(--gold-dim);font-size:16px}
+
+.stage-foot{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px clamp(18px,4vw,48px) max(18px,env(safe-area-inset-bottom));
+  border-top:1px solid var(--line-soft);
+}
+.stage-hint{flex:1 1 200px;font-size:var(--fs-12);color:var(--muted)}
+.stage-btn{
+  min-height:38px;padding:0 15px;border:1px solid var(--line-2);border-radius:var(--radius-xs);
+  background:transparent;color:var(--text-2);font-size:var(--fs-12);cursor:pointer;
+}
+.stage-btn:hover{color:var(--text);border-color:var(--line)}
+.stage-btn.gold{border-color:rgba(201,168,106,.42);color:var(--gold-bright)}
+.stage-btn.gold:hover{background:rgba(201,168,106,.08)}
+
+/* 牌意浮层：fixed + JS clamp 在视口内，不挤压牌阵 */
+.stage-meaning{
+  position:fixed;z-index:10001;width:min(340px,calc(100vw - 28px));
+  max-height:min(70vh,460px);overflow:auto;overscroll-behavior:contain;
+  padding:18px 18px 16px;border:1px solid var(--line-2);border-radius:var(--radius-md);
+  background:var(--panel);box-shadow:0 30px 70px -24px rgba(0,0,0,.95);
+  animation:sheetIn .18s var(--ease) both;
+}
+.stage-meaning[hidden]{display:none}
+.sm-close{position:absolute;right:10px;top:10px;min-width:32px;min-height:32px}
+.sm-kicker{font-size:11px;letter-spacing:.18em;color:var(--gold)}
+.sm-name{font-family:var(--font-serif);font-size:20px;margin:4px 0 2px}
+.sm-meta{font-size:var(--fs-12);color:var(--muted-2)}
+.sm-text{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft);
+  font-size:var(--fs-13);line-height:1.75;color:var(--text-2)}
+
+@media (prefers-reduced-motion:reduce){
+  dialog.stage-dialog[open],.stage-card,.stage-meaning{animation:none}
+  .stage-card:hover{transform:none}
+}
 
 /* ---------- 9. 牌阵选择 ---------- */
 /* 推荐牌阵排成一行（窄了自动折行），不再竖着占满整屏。 */

@@ -766,6 +766,13 @@ function renderCards(inner, bub, data, opts){
   head.innerHTML = '<b>' + escHtml(data.spread || '抽牌') + '</b>　' + items.length + ' 张' +
     (data.manual ? ' · 手选' : (data.random ? ' · 真随机' : '')) +
     (data.spread_desc ? '　<span>' + escHtml(data.spread_desc) + '</span>' : '');
+  const stageLink = document.createElement('button');
+  stageLink.type = 'button';
+  stageLink.className = 'draw-stage-link';
+  stageLink.textContent = '⛶ 全屏看牌阵';
+  stageLink.title = '在完整大画布上重看这个牌阵';
+  stageLink.addEventListener('click', () => openStageWithCards(data));
+  head.appendChild(stageLink);
   wrap.appendChild(head);
 
   const scroll = document.createElement('div');
@@ -858,7 +865,409 @@ function renderCards(inner, bub, data, opts){
   renderBoard(data);
 }
 
-/* ---------- 手动选牌舞台 ----------
+/* ---------- 全屏牌阵舞台（仿参考仓库的大画布） ----------
+   中央 grid 牌阵 + 环绕弧形牌堆，一屏看全整个牌阵；点牌看牌意浮层。
+   原生 <dialog> 提供焦点管理 / Esc / top layer。手选与真随机都走这里。 */
+const stageDialog = $('stageDialog');
+let _stageCleanup = null;
+let _stageAbort = null;   // 中途关闭舞台时让 renderStagePick 的 Promise 落地，避免 playEvents 挂起
+
+function stageClose(){
+  if(!stageDialog || !stageDialog.open) return;
+  if(_stageAbort){ const a = _stageAbort; _stageAbort = null; a(); }
+  if(_stageCleanup){ _stageCleanup(); _stageCleanup = null; }
+  hideStageMeaning();
+  stageDialog.close();
+}
+
+// 把牌意浮层锚定在被点牌附近并 clamp 在视口内（position-aware 的手写 fallback：
+// anchor positioning 在 Chrome/Firefox 尚不可用，故用 getBoundingClientRect）。
+function showStageMeaning(card, anchor){
+  const m = $('stageMeaning');
+  if(!m) return;
+  $('smPos').textContent = [card.position, card.position_meaning].filter(Boolean).join(' · ');
+  $('smName').textContent = (card.name || '') + (card.orientation ? '　' + card.orientation : '');
+  $('smMeta').textContent = [card.reason ? '补牌 · ' + card.reason : '', card.arcana || ''].filter(Boolean).join(' · ');
+  const meaning = card.meaning || card.position_meaning || '这张牌的意思请结合牌位与你的问题来读。';
+  $('smText').textContent = meaning;
+  m.hidden = false;
+  const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+  const mw = m.offsetWidth, mh = m.offsetHeight, pad = 12;
+  let left = r ? (r.left + r.width / 2 - mw / 2) : (innerWidth - mw) / 2;
+  let top = r ? (r.top - mh - 10) : (innerHeight - mh) / 2;
+  if(top < pad) top = r ? Math.min(r.bottom + 10, innerHeight - mh - pad) : pad;
+  left = Math.max(pad, Math.min(left, innerWidth - mw - pad));
+  top = Math.max(pad, Math.min(top, innerHeight - mh - pad));
+  m.style.left = left + 'px';
+  m.style.top = top + 'px';
+  $('smClose').focus();
+}
+function hideStageMeaning(){
+  const m = $('stageMeaning');
+  if(m) m.hidden = true;
+}
+
+// 椭圆弧上的等距取角：弧长查找表把 u∈[0,1] 映射到 [-90°,90°]。
+function stageArcLut(rx, ry){
+  const N = 180, table = new Array(N + 1);
+  let total = 0, prev = 0;
+  for(let i = 0; i <= N; i++){
+    const a = (-90 + 180 * i / N) * Math.PI / 180;
+    const speed = Math.sqrt(rx*rx*Math.cos(a)*Math.cos(a) + ry*ry*Math.sin(a)*Math.sin(a));
+    if(i > 0) total += (speed + prev) / 2 * (Math.PI / N);
+    prev = speed;
+    table[i] = total;
+  }
+  return {table: table, total: total, N: N};
+}
+function stageAngleAt(u, lut){
+  const target = u * lut.total, t = lut.table;
+  let lo = 0, hi = t.length - 1;
+  while(hi - lo > 1){ const mid = (lo + hi) >> 1; if(t[mid] < target) lo = mid; else hi = mid; }
+  const span = t[hi] - t[lo] || 1;
+  return -90 + ((lo + (target - t[lo]) / span) * 180) / lut.N;
+}
+
+// 在中央网格上摆一张牌/一个空牌位；cell=[col,row,(rot)]。
+function stagePlaceCell(el, cell, cols, rows, index){
+  const col = Math.max(1, Math.min(cols, Number(cell && cell[0]) || 1));
+  const row = Math.max(1, Math.min(rows, Number(cell && cell[1]) || 1));
+  const rot = Number(cell && cell[2]) === 90 ? 90 : 0;
+  el.style.setProperty('--c', String(col));
+  el.style.setProperty('--r', String(row));
+  el.style.setProperty('--rot', rot ? '90deg' : '0deg');
+  // 同一格叠放（如凯尔特十字的阻碍牌压中心）：后落的那张在上层。
+  el.style.setProperty('--z', String(10 + index + (rot ? 50 : 0) + col * 100 + row * 10));
+  return {col, row, rot};
+}
+
+function stageCellImage(c){
+  return (typeof c.image === 'string' && /^cards\/[A-Za-z0-9_\-\.]+\.(jpe?g|png)$/i.test(c.image)) ? c.image : '';
+}
+
+// 牌宽同时受列数和可用高度约束：高牌阵（如凯尔特十字 5 行）自动缩小，
+// 保证整副牌在一个视口内看得全，不用滚动。宽牌阵则按列数收敛避免挤出。
+function stageCardWidth(cols, rows, gapY, deckSpace){
+  const byCol = cols >= 7 ? 68 : cols >= 5 ? 80 : cols >= 4 ? 90 : 104;
+  const availH = Math.max(320, (window.innerHeight || 800) - 172 - (deckSpace || 12));
+  const schByH = (availH - (rows - 1) * (gapY || 14)) / rows;
+  const byH = Math.floor(schByH * 420 / 711);
+  return Math.max(44, Math.min(byCol, byH));
+}
+
+// 把一副已抽出的牌渲染成全屏牌阵（解读轮 / 随机抽 / 从精简条点开都用它）。
+function openStageWithCards(data){
+  // 若从选牌阶段直接进来，先卸掉选牌的 resize 监听/abort，换上牌阵展示态。
+  if(_stageCleanup){ _stageCleanup(); _stageCleanup = null; }
+  _stageAbort = null;
+  if(!stageDialog || !stageDialog.open) openStageShell();
+  const grid = $('stageGrid');
+  if(!grid || !data) return;
+  const items = data.items || [];
+  const extras = data.extras || [];
+  const lay = data.layout || {cols: items.length, rows: 1, cells: items.map((_, i) => [i+1, 1])};
+  const cols = Math.max(1, lay.cols | 0), rows = Math.max(1, lay.rows | 0);
+  const cells = Array.isArray(lay.cells) ? lay.cells : [];
+  const header = items.concat(extras);
+  $('stageTitle').textContent = data.spread || '抽牌';
+  $('stageSub').textContent = (data.spread_desc || '') + '　' + items.length + ' 张' +
+    (data.manual ? ' · 手选' : (data.random ? ' · 真随机' : ''));
+  $('stageHint').textContent = '牌已落位 · 点任意一张看牌意，或关掉舞台回聊天区看解读';
+  $('stageShuffle').hidden = true;
+  $('stageRandom').hidden = false;
+  // 牌面尺寸同时受列数与可用高度约束，整副牌一屏可见
+  const gapY = lay.gap && lay.gap.length === 2 ? (Number(lay.gap[0]) || 0) : 14;
+  const scw = stageCardWidth(cols, rows, gapY, 12);
+  const sch = Math.round(scw * 711 / 420);
+  grid.style.setProperty('--cols', String(cols));
+  grid.style.setProperty('--rows', String(rows));
+  grid.style.setProperty('--scw', scw + 'px');
+  grid.style.setProperty('--sch', sch + 'px');
+  if(lay.gap && lay.gap.length === 2){
+    grid.style.setProperty('--gy', (Number(lay.gap[0]) || 0) + 'px');
+    grid.style.setProperty('--gx', (Number(lay.gap[1]) || 0) + 'px');
+  }
+  grid.innerHTML = '';
+  header.forEach((c, i) => {
+    const cell = i < items.length
+      ? (cells[i] || [i + 1, 1])
+      : [((i - items.length) % cols) + 1, rows + 1 + Math.floor((i - items.length) / cols)];
+    const outer = document.createElement('div');
+    outer.className = 'stage-cell';
+    stagePlaceCell(outer, cell, cols, rows, i);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'stage-card';
+    const img = stageCellImage(c);
+    btn.innerHTML = (img ? '<img src="' + escAttr(img) + '" alt="" class="' + (c.orientation === '逆位' ? 'rev' : '') + '">' : '') +
+      '<span class="sc-num">' + (i + 1) + '</span>';
+    btn.setAttribute('aria-label', (c.position || '') + '：' + (c.name || '') + ' ' + (c.orientation || '') + '，看牌意');
+    btn.addEventListener('click', () => showStageMeaning(c, btn));
+    outer.appendChild(btn);
+    grid.appendChild(outer);
+  });
+  // 收起牌堆，牌阵居中
+  $('stageDeck').innerHTML = '';
+  $('stageCenter').style.setProperty('--deck-space', '12px');
+  requestAnimationFrame(() => {
+    const scroll = $('stageGridScroll');
+    if(scroll) scroll.scrollLeft = (scroll.scrollWidth - scroll.clientWidth) / 2;
+  });
+}
+
+// 打开舞台空壳（选牌轮用）；调用方负责往 grid 摆牌位、往 deck 摆牌堆。
+function openStageShell(){
+  if(!stageDialog) return;
+  if(!stageDialog.open) stageDialog.showModal();
+  const grid = $('stageGrid');
+  if(grid) grid.innerHTML = '';
+  const deck = $('stageDeck');
+  if(deck) deck.innerHTML = '';
+  $('stageMeaning').hidden = true;
+  _stageCleanup = null;
+}
+
+// 选牌轮：仿参考仓库——中央牌阵空位 + 环绕弧形牌堆，点牌飞入下一个牌位。
+// resolve 与旧 renderPickStage 一致：{cards, ask}。
+function renderStagePick(data){
+  return new Promise(resolve => {
+    openStageShell();
+    const positions = (data && data.positions) || [];
+    const need = positions.length || 1;
+    const spread = (data && data.spread) || '三张';
+    const lay = (data && data.layout) || {cols: need, rows: 1, cells: positions.map((_, i) => [i+1, 1])};
+    const cols = Math.max(1, lay.cols | 0), rows = Math.max(1, lay.rows | 0);
+    const cells = Array.isArray(lay.cells) ? lay.cells : [];
+    const picked = [];
+    let done = false;
+
+    const grid = $('stageGrid'), deck = $('stageDeck');
+    const scw = cols >= 7 ? 68 : cols >= 5 ? 80 : cols >= 4 ? 90 : 104;
+    const sch = Math.round(scw * 711 / 420);
+    grid.style.setProperty('--cols', String(cols));
+    grid.style.setProperty('--rows', String(rows));
+    grid.style.setProperty('--scw', scw + 'px');
+    grid.style.setProperty('--sch', sch + 'px');
+    if(lay.gap && lay.gap.length === 2){
+      grid.style.setProperty('--gy', (Number(lay.gap[0]) || 0) + 'px');
+      grid.style.setProperty('--gx', (Number(lay.gap[1]) || 0) + 'px');
+    }
+    $('stageTitle').textContent = spread;
+    $('stageSub').textContent = (data.spread_desc || '') + '　' + need + ' 张';
+    $('stageHint').textContent = '轻点牌堆里的一张，抽进下一个牌位';
+    $('stageShuffle').hidden = false;
+    $('stageRandom').hidden = false;
+
+    // 中央牌阵空位：按 layout 摆位，标注牌位序号与含义
+    const slotEls = positions.map((p, i) => {
+      const outer = document.createElement('div');
+      outer.className = 'stage-cell';
+      stagePlaceCell(outer, cells[i] || [i + 1, 1], cols, rows, i);
+      const slot = document.createElement('div');
+      slot.className = 'stage-slot';
+      slot.innerHTML = '<span class="ss-num">' + (i + 1) + '</span>' +
+        '<span class="ss-name">' + escHtml(p.name || '') + '</span>';
+      slot.title = p.meaning || '';
+      outer.appendChild(slot);
+      grid.appendChild(outer);
+      return {outer, slot};
+    });
+
+    // 牌堆：78 张牌背，展示顺序用 crypto 洗牌（dataset.i=真实下标）
+    function secureRandomInt(max){
+      const range = 0x100000000, limit = range - (range % max);
+      const buf = new Uint32Array(1);
+      const c = (typeof crypto !== 'undefined' && crypto.getRandomValues) ? crypto : null;
+      let v;
+      do{ if(c) c.getRandomValues(buf); else buf[0] = Math.floor(Math.random() * range); v = buf[0]; }
+      while(v >= limit);
+      return v % max;
+    }
+    function shuffledDeck(){
+      const a = Array.from({length: 78}, (_, i) => i);
+      for(let i = a.length - 1; i > 0; i--){
+        const j = secureRandomInt(i + 1); const t = a[i]; a[i] = a[j]; a[j] = t;
+      }
+      return a;
+    }
+    let displayOrder = shuffledDeck();
+    let deckCards = [];
+    let pos = 0, vis = 19, drag = null, suppressUntil = 0;
+
+    function buildDeck(){
+      deck.innerHTML = '';
+      deckCards = displayOrder.map((realIdx, d) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'stage-deck-card';
+        b.dataset.i = String(realIdx);
+        b.dataset.slot = String(d);
+        b.setAttribute('aria-label', '牌堆第 ' + (d + 1) + ' 张，轻点抽出');
+        b.innerHTML = '<span class="pc-glyph">✦</span>';
+        deck.appendChild(b);
+        return b;
+      });
+    }
+    const ARC_SPREAD = 0.82;
+    function layoutDeck(){
+      const w = $('stageCenter').clientWidth || 800;
+      const cw = w < 620 ? 46 : 58;
+      const rx = Math.max(120, Math.min((w - cw) / 2 - 8, w * 0.42));
+      const ry = Math.max(52, Math.min(112, w * 0.14));
+      const deckH = Math.round(ry + cw * 711 / 420 * 0.5 + 16);
+      $('stageCenter').style.setProperty('--deck-space', deckH + 'px');
+      deck.style.setProperty('--deck-cy', Math.round(ry * 0.62 + 6) + 'px');
+      deck.style.setProperty('--deck-cw', cw + 'px');
+      const lut = stageArcLut(rx, ry);
+      const arcLen = Math.PI * ((rx + ry) / 2) * ARC_SPREAD;
+      vis = Math.max(9, Math.min(deckCards.length, Math.round(arcLen / (cw * 0.42))));
+      const K = Math.max(1, vis - 1);
+      const max = Math.max(0, deckCards.length - vis);
+      pos = Math.max(0, Math.min(max, pos));
+      deckCards.forEach((card, i) => {
+        const u = (i - pos) / K;
+        if(u < -0.02 || u > 1.02 || card.classList.contains('picked')){
+          card.style.visibility = 'hidden'; card.style.pointerEvents = 'none'; return;
+        }
+        const a = stageAngleAt(Math.min(1, Math.max(0, u)), lut) * ARC_SPREAD;
+        const rad = a * Math.PI / 180;
+        const x = Math.sin(rad) * rx, y = -Math.cos(rad) * ry * 0.5;
+        card.style.visibility = 'visible'; card.style.pointerEvents = 'auto';
+        card.style.setProperty('--tx', x.toFixed(1) + 'px');
+        card.style.setProperty('--ty', y.toFixed(1) + 'px');
+        card.style.setProperty('--rot', a.toFixed(2) + 'deg');
+        card.style.zIndex = String(100 + Math.round(u * 200));
+      });
+    }
+
+    function flyToSlot(card, slot){
+      if(!slot || !card.getBoundingClientRect || typeof card.animate !== 'function') return;
+      const from = card.getBoundingClientRect(), to = slot.getBoundingClientRect();
+      const ghost = document.createElement('div');
+      ghost.className = 'stage-fly-ghost';
+      ghost.innerHTML = '<span class="pc-glyph">✦</span>';
+      ghost.style.left = (from.left + from.width / 2) + 'px';
+      ghost.style.top = (from.top + from.height / 2) + 'px';
+      document.body.appendChild(ghost);
+      const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+      const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+      const anim = ghost.animate([
+        {transform: 'translate(-50%,-50%) scale(1)', opacity: 1},
+        {transform: 'translate(-50%,-50%) translate(' + dx + 'px,' + dy + 'px) scale(.5)', opacity: .8}
+      ], {duration: 400, easing: 'cubic-bezier(.2,.7,.3,1)'});
+      anim.onfinish = () => ghost.remove();
+      if(!anim.onfinish) setTimeout(() => ghost.remove(), 450);
+    }
+
+    function pick(card){
+      if(done || card.classList.contains('picked')) return;
+      const idx = Number(card.dataset.i);
+      if(picked.indexOf(idx) >= 0) return;
+      const target = slotEls[picked.length];
+      if(target) flyToSlot(card, target.slot);
+      picked.push(idx);
+      card.classList.add('picked');
+      card.style.visibility = 'hidden';
+      if(target){
+        target.slot.classList.add('filled');
+        target.slot.innerHTML = '<span class="ss-num">' + (picked.length) + '</span>' +
+          '<span class="ss-name">✦ 已选</span>';
+      }
+        $('stageHint').textContent = '还需 ' + (need - picked.length) + ' 张 · 轻点牌堆继续';
+      layoutDeck();
+      if(picked.length >= need) submit();
+    }
+
+    async function submit(){
+      if(done) return;
+      done = true;
+      $('stageHint').textContent = '正在把牌放到牌位上…';
+      try{
+        const r = await fetch('/api/pick', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({session_id: sessionId, spread: spread, picks: picked})
+        });
+        const d = await r.json();
+        if(!d || !d.ok) throw new Error((d && d.error) || '落牌失败');
+        resolve({cards: d.cards, ask: d.ask || ''});
+      }catch(err){
+        done = false;
+        picked.length = 0;
+        $('stageHint').textContent = '落牌失败：' + ((err && err.message) || err) + ' · 请重选';
+      }
+    }
+
+    function reshuffle(){
+      if(done) return;
+      picked.length = 0;
+      displayOrder = shuffledDeck();
+      buildDeck();
+      slotEls.forEach((s, i) => {
+        s.slot.classList.remove('filled');
+        s.slot.innerHTML = '<span class="ss-num">' + (i + 1) + '</span>' +
+          '<span class="ss-name">' + escHtml((positions[i] || {}).name || '') + '</span>';
+      });
+      pos = 0; suppressUntil = 0;
+      $('stageHint').textContent = '已重新洗牌 · 轻点牌堆抽牌';
+      layoutDeck();
+    }
+
+    async function randomDraw(){
+      if(done) return;
+      done = true;
+      $('stageHint').textContent = '正在用系统真随机抽牌…';
+      try{
+        const r = await fetch('/api/random-draw', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({session_id: sessionId, spread: spread})
+        });
+        const d = await r.json();
+        if(!d || !d.ok) throw new Error((d && d.error) || '随机抽牌失败');
+        resolve({cards: d.cards, ask: d.ask || ''});
+      }catch(err){
+        done = false;
+        $('stageHint').textContent = '随机抽牌失败：' + ((err && err.message) || err);
+      }
+    }
+
+    // 事件：点击抽牌 / 拖动翻堆 / 底部按钮
+    deck.addEventListener('click', e => {
+      if(Date.now() < suppressUntil) return;
+      const card = e.target.closest && e.target.closest('.stage-deck-card');
+      if(card) pick(card);
+    });
+    deck.addEventListener('pointerdown', e => {
+      if(e.button !== undefined && e.button !== 0) return;
+      drag = {x: e.clientX, pos: pos, moved: 0};
+    });
+    deck.addEventListener('pointermove', e => {
+      if(!drag) return;
+      drag.moved = Math.max(drag.moved, Math.abs(e.clientX - drag.x));
+      pos = drag.pos - (e.clientX - drag.x) / 30;
+      layoutDeck();
+    });
+    function endDrag(){
+      if(!drag) return;
+      if(drag.moved > 8) suppressUntil = Date.now() + 260;
+      drag = null;
+    }
+    deck.addEventListener('pointerup', endDrag);
+    deck.addEventListener('pointercancel', endDrag);
+    $('stageShuffle').onclick = reshuffle;
+    $('stageRandom').onclick = randomDraw;
+
+    function onResize(){ if(stageDialog.open) layoutDeck(); }
+    window.addEventListener('resize', onResize);
+    _stageCleanup = () => window.removeEventListener('resize', onResize);
+    // 中途关闭舞台：resolve(null)，playEvents 收到后跳过落牌展示，干净收尾。
+    _stageAbort = () => { if(!done) resolve(null); };
+
+    buildDeck();
+    requestAnimationFrame(() => { layoutDeck(); grid.scrollLeft = (grid.scrollWidth - grid.clientWidth) / 2; });
+  });
+}
+
+/* ---------- 手动选牌舞台（聊天流内嵌，保留兼容） ----------
    牌阵定下之后：扇形牌堆围在牌位上方，拖动翻看，轻点一张抽进下一个牌位。
    挑满张数后提交 /api/pick，牌面按挑选顺序落位，再回到「提问 → 解读」。 */
 function renderPickStage(inner, bub, data){
@@ -1295,6 +1704,7 @@ function renderBoard(data){
       (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
       '<div class="b-cards" ' + gridVars + '>' + cardsHtml + '</div>' +
       '<div class="b-acts">' +
+        '<button type="button" data-act="stage" class="is-primary">⛶ 全屏看牌阵</button>' +
         '<button type="button" data-act="spread">牌阵</button>' +
         '<button type="button" data-act="redraw">重抽</button>' +
         '<button type="button" data-act="random">🎲 真随机抽</button>' +
@@ -1319,7 +1729,11 @@ function renderBoard(data){
   el.querySelectorAll('[data-act]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const act = btn.dataset.act;
-      if(act === 'spread') send('换一个牌阵');
+      if(act === 'stage'){
+        // 在完整大画布上重看当前牌阵（用右栏当前 data，不重抽、不改牌）
+        openStageWithCards(data);
+      }
+      else if(act === 'spread') send('换一个牌阵');
       else if(act === 'redraw') send('重抽这副牌');
       else if(act === 'extra') send('补一张牌');
       else if(act === 'random'){
@@ -1696,10 +2110,13 @@ async function send(textOverride){
       if(obj.meditate){ await typeText(obj.meditate); await sleep(reduceMotion?0:650); }
       if(obj.cards){ lastCards=obj.cards; await showCards(obj.cards); }
       if(obj.pick){
-        // 选牌轮：牌阵已定。可亲手挑满落位，也可点「一键真随机」让系统用 OS 熵抽。
-        const res = await renderPickStage(inner, bub, obj.pick);
+        // 选牌轮：仿参考仓库的大画布——弧形牌堆挑牌 → 落位 → 全屏看完整牌阵。
+        // 手选挑满或点「一键真随机」（OS 熵）都会走同一条展示路径。
+        const res = await renderStagePick(obj.pick);
         if(res && res.cards){
           lastCards = res.cards;
+          // 牌阵落到全屏舞台中央完整呈现；聊天流仍保留精简条供导出/解读。
+          openStageWithCards(res.cards);
           renderCards(inner, bub, res.cards, {canExtra:false});
           if(res.ask) await typeText(res.ask);
         }
@@ -1840,6 +2257,18 @@ $('stopBtn').onclick = () => {
 $('lbClose').onclick = closeLightbox;
 $('lightbox').addEventListener('click', e => { if(e.target === $('lightbox')) closeLightbox(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape') closeLightbox(); });
+// 全屏牌阵舞台：关闭按钮 / 牌意浮层关闭 / Esc 原生 cancel → close 统一清理
+if($('stageClose')) $('stageClose').onclick = stageClose;
+if($('smClose')) $('smClose').onclick = hideStageMeaning;
+if(stageDialog){
+  stageDialog.addEventListener('close', () => {
+    // Esc（cancel）或直接 close 都要让等待中的选牌 Promise 落地，避免 playEvents 挂起。
+    if(_stageAbort){ const a = _stageAbort; _stageAbort = null; a(); }
+    if(_stageCleanup){ _stageCleanup(); _stageCleanup = null; }
+    hideStageMeaning();
+  });
+  // 点浮层外的遮罩不关闭 dialog（牌阵区需要滚动/点牌）；仅用显式按钮或 Esc。
+}
 input.addEventListener('keydown', e => {
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
 });
