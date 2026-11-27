@@ -1601,7 +1601,7 @@ async function send(textOverride){
   // 积压多 → 加快（跟得上流）；积压少 → 放慢（看得出在打）；标点处停顿。
   // 系统开了「减少动态效果」时，慢动效（星空、漂浮、入场）该关就关；
   // 但打字机是内容本身的呈现方式，不是装饰，所以保留，只是调快。
-  let typed='', pending='', typing=false;
+  let typed='', pending='', typing=false, typerNode=null;
   function enqueue(text){
     if(!text) return;
     full += text;
@@ -1614,9 +1614,14 @@ async function send(textOverride){
     await sleep(reduceMotion ? 60 : 180);
     // 逐字写进一个文本节点，而不是每字重设 textContent：
     // 后者每次都重建节点、强制重排，长回复会明显掉帧。
-    const node = document.createTextNode('');
-    bub.textContent = '';
-    bub.appendChild(node);
+    // 绝不能 bub.textContent='' 整体清空：打字期间 renderSpreadChoices 会把
+    // 选阵按钮插进同一气泡，整体清空会把按钮一起抹掉（用户看到"提示在、按钮没了"）。
+    // 打字机只认自己创建的文本节点：没有就新建并插到最前，有就复用。
+    if(!typerNode || typerNode.parentNode !== bub){
+      typerNode = document.createTextNode('');
+      bub.insertBefore(typerNode, bub.firstChild);
+    }
+    const node = typerNode;
     // 滚动也按帧合并；用户自己往上翻时就不抢了，否则长回复会一直跟人较劲。
     let queued = false;
     const stick = () => {
