@@ -2302,8 +2302,13 @@ async function loadKB(){
     return;
   }
   kbData=d; renderKB();
-  $('visionEnabled').checked=!!(d.vision&&d.vision.config.enabled);
-  const vc=d.vision&&d.vision.config||{};
+  // /api/plugins 的结构是 d.vision.vision.config（plugin_sight.settings() 把
+  // plugin_vision 的设置嵌在 vision 键下），不是 d.vision.config。旧写法读
+  // undefined.enabled 会在页面加载时抛错，连带中断后续初始化。ocr 是扁平的
+  // （d.vision.ocr），保持原样。
+  const visionCfg = d.vision && d.vision.vision && d.vision.vision.config;
+  $('visionEnabled').checked=!!(visionCfg && visionCfg.enabled);
+  const vc=visionCfg||{};
   $('visionBase').value=vc.base_url||''; $('visionModel').value=vc.model||'';
   $('visionKey').placeholder=vc.api_key&&vc.api_key.indexOf('***')>=0?'已保存密钥（留空不覆盖）':'留空则不覆盖';
   renderOcrStatus(d&&d.vision&&d.vision.ocr);
