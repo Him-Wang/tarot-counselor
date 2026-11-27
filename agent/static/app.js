@@ -638,6 +638,7 @@ function _spreadChoiceNode(item){
 }
 function renderSpreadChoices(bub, data){
   if(!data || !data.groups || !data.groups.length) return;
+  const slideIn = [];   // 需要逐个淡入的单元，按出现顺序注入递增延迟
   const all = [];
   (data.groups || []).forEach(g => (g.items || []).forEach(it => all.push(it)));
   const byName = {};
@@ -654,6 +655,7 @@ function renderSpreadChoices(bub, data){
     recTitle.textContent = '【推荐】';
     bub.appendChild(recTitle);
     bub.appendChild(recRow);
+    [...recRow.children].forEach(n => slideIn.push(n));
   }
 
   const more = document.createElement('details');
@@ -674,6 +676,7 @@ function renderSpreadChoices(bub, data){
     more.appendChild(row);
   });
   bub.appendChild(more);
+  slideIn.push(more);
 
   if(data.auto){
     const auto = document.createElement('button');
@@ -686,7 +689,12 @@ function renderSpreadChoices(bub, data){
       send();
     };
     bub.appendChild(auto);
+    slideIn.push(auto);
   }
+
+  // 逐个淡入：每个单元比前一个晚 60ms。sibling-index() 尚未在所有目标浏览器
+  // 普及，这里直接用 JS 注入 --i，CSS 里用 animation-delay:calc(var(--i)*60ms)。
+  slideIn.forEach((n, i) => n.style.animationDelay = (i * 60) + 'ms');
 }
 document.addEventListener('keydown', e => { if(e.key === 'Escape') hideSpreadTip(); });
 window.addEventListener('resize', hideSpreadTip);
@@ -1586,6 +1594,7 @@ async function send(textOverride){
   abortCtl = new AbortController();
   $('stopBtn').hidden = false;
   let full='', safetyKind=null, usageInfo=null, emotionAsk=false;
+  let spreadChoicesData=null;   // 选阵按钮等引导语打完再渲染，避免抢打字机的气泡
 
   // 打字机队列：SSE 事件按到达顺序入队，再依次演出。抽牌轮会先收到
   // meditate（默念引导语）→ cards（翻牌）→ token（提问），于是形成
@@ -1695,7 +1704,7 @@ async function send(textOverride){
           if(res.ask) await typeText(res.ask);
         }
       }
-      if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); chat.scrollTop=chat.scrollHeight; }
+      if(obj.spread_choices){ spreadChoicesData=obj.spread_choices; }
       if(obj.token){ await typeText(obj.token); }
       if(obj.error){ full+='\n[错误] '+obj.error; bub.textContent=full; }
     }
@@ -1732,7 +1741,7 @@ async function send(textOverride){
             badge.textContent='⚙ '+obj.tool; inner.insertBefore(badge, bub);
           }
           if(obj.cards){ lastCards=obj.cards; renderCards(inner, bub, obj.cards, {canExtra:true}); }  // 解读轮：直接渲染，无需延迟
-          if(obj.spread_choices){ renderSpreadChoices(bub, obj.spread_choices); }
+          if(obj.spread_choices){ spreadChoicesData=obj.spread_choices; }   // 等引导语打完再挂按钮
           if(obj.budget){ updateUsageChip({total: obj.budget.used}, obj.budget.limit); }
           if(obj.usage){ usageInfo=obj.usage; }
           if(obj.emotion_ask){ emotionAsk=true; }
@@ -1751,6 +1760,7 @@ async function send(textOverride){
   abortCtl = null;
   if(events.length) await playEvents();
   await drain();               // 等最后一个字打完，再挂按钮/存历史
+  if(spreadChoicesData){ renderSpreadChoices(bub, spreadChoicesData); spreadChoicesData=null; chat.scrollTop=chat.scrollHeight; }
   if(!full && !stopped) bub.textContent='（没有收到回复，检查设置里的连接。）';
   bub.classList.remove('typewriting');
   abortCtl = null;

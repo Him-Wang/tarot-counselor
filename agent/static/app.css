@@ -748,7 +748,17 @@ body.has-board .draw-wrap{display:none}
 .pick-fly-ghost .pc-glyph{color:var(--gold-dim);font-size:18px}
 
 /* ---------- 9. 牌阵选择 ---------- */
-.spread-choice-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+/* 推荐牌阵排成一行（窄了自动折行），不再竖着占满整屏。 */
+.spread-choice-row{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;margin-top:12px}
+.spread-choice{display:flex;align-items:center;gap:4px}
+/* 打字结束后按钮逐个淡入；animation-delay 由 JS 按序号写成内联样式，不依赖 sibling-index()。 */
+@keyframes spreadChoiceIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.spread-choice-row .spread-choice,.spread-choice-auto,.spread-more{
+  animation:spreadChoiceIn .32s var(--ease) both;
+}
+@media (prefers-reduced-motion:reduce){
+  .spread-choice-row .spread-choice,.spread-choice-auto,.spread-more{animation:none}
+}
 .spread-group-title{font-size:12px;letter-spacing:.18em;color:var(--gold);margin-top:10px}
 .spread-choice-btn{
   display:grid;grid-template-columns:1fr auto;gap:2px 12px;
@@ -967,8 +977,10 @@ body.has-board .draw-wrap{display:none}
     padding:18px 20px;max-height:42vh;
   }
   body.has-board .chatpane{grid-row:2}
-  .b-cards{display:flex;flex-wrap:wrap;gap:10px}
-  .bcard{width:84px}
+  /* 牌阵必须保持 grid 定位：十字、生命树靠 grid-column/grid-row 摆位，
+     一旦改成 flex 就会被打平成一横行、丢掉牌阵形状。窄屏只缩小牌面与间距。 */
+  .b-cards{gap:8px 6px}
+  .bcard{min-width:0}
   .b-face{border-radius:2px}
 }
 
