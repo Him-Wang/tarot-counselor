@@ -541,10 +541,17 @@ body.dark .safety-line,
   display:block;margin-bottom:3px;
   font-size:12px;letter-spacing:.2em;color:var(--gold);
 }
-.b-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px;margin-top:18px}
+/* 牌阵按 layout() 的 cols/rows/cells 摆位，不再固定两列平铺。
+   列宽自适应右栏，牌位可跨列/跨行，十字、生命树等传统摆法都能还原。 */
+.b-cards{
+  display:grid;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));
+  gap:var(--gy,12px) var(--gx,8px);
+  justify-content:center;align-items:start;
+  margin-top:18px;
+}
 .bcard{
-  display:flex;flex-direction:column;gap:7px;
-  padding:0;border:0;background:none;text-align:left;
+  display:flex;flex-direction:column;gap:5px;
+  min-width:0;padding:0;border:0;background:none;text-align:left;
   transition:transform .22s var(--ease);
 }
 .bcard:hover{transform:translateY(-3px)}
@@ -552,8 +559,10 @@ body.dark .safety-line,
   display:block;width:100%;aspect-ratio:420/711;
   border-radius:3px;overflow:hidden;
   background:var(--panel-3);
-  box-shadow:0 18px 30px -14px rgba(0,0,0,.9), 0 0 0 1px rgba(201,168,106,.18);
+  box-shadow:0 14px 24px -14px rgba(0,0,0,.9), 0 0 0 1px rgba(201,168,106,.18);
 }
+/* 横放的牌（凯尔特十字阻碍牌）压在中心牌上 */
+.bcard.rot .b-face{width:130%;margin-left:-15%}
 .b-face img{width:100%;height:100%;object-fit:cover;display:block}
 .b-face img.rev{transform:rotate(180deg) scale(1.004)}
 .bcard.extra .b-face{box-shadow:0 18px 30px -14px rgba(0,0,0,.9), 0 0 0 1px rgba(201,168,106,.42)}
@@ -666,18 +675,40 @@ body.has-board .draw-wrap{display:none}
   border-radius:var(--radius-md);
   background:linear-gradient(180deg, rgba(201,168,106,.05), rgba(0,0,0,0) 46%), var(--panel);
 }
-.pick-stage{display:flex;flex-direction:column;gap:14px}
-.pick-fan{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:thin}
-.pick-card{
-  flex:none;width:58px;aspect-ratio:420/711;
-  border-radius:2px;overflow:hidden;
-  border:1px solid rgba(201,168,106,.22);
-  background:var(--panel-3);
-  transition:transform .2s var(--ease),border-color .2s var(--ease);
+.pick-stage{display:flex;flex-direction:column;gap:10px}
+/* 弧形牌堆：牌沿椭圆弧重叠排开（借鉴参考仓库 deck-ring 的扇形），
+   不再是一条带边框的平铺直线。高度由 layout() 按弧高动态设定。 */
+.pick-fan{
+  position:relative;overflow:hidden;min-height:170px;
+  touch-action:pan-y;cursor:grab;
+  -webkit-user-select:none;user-select:none;
 }
-.pick-card:hover{transform:translateY(-6px);border-color:rgba(201,168,106,.6)}
-.pick-card.picked{border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,106,.3)}
+.pick-fan.is-dragging{cursor:grabbing}
+.pick-card{
+  position:absolute;left:50%;top:50%;
+  width:56px;aspect-ratio:420/711;
+  padding:0;appearance:none;
+  border:0;border-radius:7px;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(240,214,150,.22) 0%, transparent 46%),
+    radial-gradient(1px 1px at 22% 18%, rgba(255,255,255,.85) 50%, transparent 52%),
+    radial-gradient(1px 1px at 78% 26%, rgba(255,244,214,.75) 50%, transparent 52%),
+    radial-gradient(1.5px 1.5px at 30% 76%, rgba(214,226,255,.7) 50%, transparent 52%),
+    repeating-linear-gradient(45deg, rgba(201,168,106,.07) 0 5px, transparent 5px 11px),
+    linear-gradient(168deg, #1c1830 0%, #131126 55%, #0d0b18 100%);
+  box-shadow:0 3px 9px rgba(0,0,0,.55), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.22);
+  transform-origin:50% 100%;
+  transition:box-shadow .2s var(--ease);
+  will-change:transform;
+}
+.pick-card:hover{box-shadow:0 10px 20px rgba(0,0,0,.6), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.55)}
+.pick-card.picked{box-shadow:0 0 0 2px var(--gold), 0 6px 16px rgba(0,0,0,.6)}
 .pick-card img{width:100%;height:100%;object-fit:cover;display:block}
+.pick-card .pc-glyph{
+  position:absolute;inset:0;display:grid;place-items:center;
+  color:var(--gold-dim);font-size:16px;opacity:.72;text-shadow:0 0 8px rgba(201,168,106,.5);
+  pointer-events:none;
+}
 .pick-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
 .pick-slot{
   display:flex;flex-direction:column;gap:5px;
@@ -702,14 +733,17 @@ body.has-board .draw-wrap{display:none}
 /* 洗牌 / 飞入动画 */
 .pick-fan.just-shuffled .pick-card{animation:pickDeal .42s var(--ease) both}
 @keyframes pickDeal{
-  from{opacity:.15;transform:translate(-50%,18px) rotate(0deg) scale(.9)}
-  to{opacity:1}
+  from{opacity:.15;filter:brightness(1.6)}
+  to{opacity:1;filter:brightness(1)}
 }
 .pick-fly-ghost{
   position:fixed;z-index:9999;width:44px;height:74px;pointer-events:none;
   display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--gold);border-radius:2px;
-  background:var(--panel-3);box-shadow:0 6px 18px rgba(0,0,0,.5);
+  border:0;border-radius:7px;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(240,214,150,.22) 0%, transparent 46%),
+    linear-gradient(168deg, #1c1830 0%, #131126 55%, #0d0b18 100%);
+  box-shadow:0 6px 18px rgba(0,0,0,.5), inset 0 0 0 3px rgba(8,7,13,.8), inset 0 0 0 4px rgba(201,168,106,.24);
 }
 .pick-fly-ghost .pc-glyph{color:var(--gold-dim);font-size:18px}
 

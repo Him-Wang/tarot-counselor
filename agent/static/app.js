@@ -945,30 +945,64 @@ function renderPickStage(inner, bub, data){
         : '张数够了，正在落位…';
     }
 
-    // 扇形排布：只显示视口容得下的张数，拖动时整圈平移
+    // 弧形牌堆：牌沿椭圆弧排开（借鉴参考仓库 deck-ring.js 的扇形），
+    // 牌间重叠、无硬边框；拖动时整圈沿弧滑动，两端自然抬起。
+    const ARC_SPREAD = 0.82;            // <1 时两端抬起，弧下沿不压到下方内容
+    let arcLut = null, arcLutKey = '';
+    function angleAt(u, rx, ry){
+      // 弧长查找表：把 u∈[0,1] 映射到 [-90°,90°]，保证沿弧等距、不在两端堆积。
+      const key = rx.toFixed(0) + 'x' + ry.toFixed(0);
+      if(!arcLut || arcLutKey !== key){
+        const N = 180, table = new Array(N + 1);
+        let total = 0, prev = 0;
+        for(let i = 0; i <= N; i++){
+          const a = (-90 + 180 * i / N) * Math.PI / 180;
+          const speed = Math.sqrt(rx*rx*Math.cos(a)*Math.cos(a) + ry*ry*Math.sin(a)*Math.sin(a));
+          if(i > 0) total += (speed + prev) / 2 * (Math.PI / N);
+          prev = speed;
+          table[i] = total;
+        }
+        arcLut = {table: table, total: total, N: N};
+        arcLutKey = key;
+      }
+      const target = u * arcLut.total, t = arcLut.table;
+      let lo = 0, hi = t.length - 1;
+      while(hi - lo > 1){ const mid = (lo + hi) >> 1; if(t[mid] < target) lo = mid; else hi = mid; }
+      const span = t[hi] - t[lo] || 1;
+      return -90 + ((lo + (target - t[lo]) / span) * 180) / arcLut.N;
+    }
     function layout(){
       const w = fan.clientWidth || 480;
       const cardW = w < 620 ? 46 : 56;
-      vis = Math.max(9, Math.min(cards.length, Math.round(w / (cardW * 0.5))));
+      const cardH = cardW * 711 / 420;
+      // 椭圆半轴：横跨大半个牌堆宽度，纵向随宽度收敛
+      const rx = Math.max(120, Math.min((w - cardW) / 2 - 4, w * 0.42));
+      const ry = Math.max(52, Math.min(96, w * 0.15));
+      // 动态设高，让弧顶那张不裁切；容器高度随弧高自适应
+      const fanH = Math.round(ry + cardH + 16);
+      fan.style.height = fanH + 'px';
+      const arcLen = Math.PI * ((rx + ry) / 2) * ARC_SPREAD;
+      vis = Math.max(9, Math.min(cards.length, Math.round(arcLen / (cardW * 0.42))));
+      const K = Math.max(1, vis - 1);
       const max = Math.max(0, cards.length - vis);
       pos = Math.max(0, Math.min(max, pos));
-      const span = Math.min(w - cardW - 16, Math.max(0, (vis - 1) * cardW * 0.62));
       cards.forEach((card, i) => {
-        const u = (i - pos) / Math.max(1, vis - 1);
-        if(u < -0.06 || u > 1.06 || card.classList.contains('picked')){
+        const u = (i - pos) / K;
+        if(u < -0.02 || u > 1.02 || card.classList.contains('picked')){
           card.style.visibility = 'hidden';
           card.style.pointerEvents = 'none';
           return;
         }
-        const edge = (u - 0.5) * 2;                 // -1 .. 1
-        const rot = edge * 20;
-        const x = edge * span / 2;
-        const lift = Math.pow(Math.abs(edge), 2) * 16;
+        const a = angleAt(Math.min(1, Math.max(0, u)), rx, ry) * ARC_SPREAD;
+        const rad = a * Math.PI / 180;
+        const x = Math.sin(rad) * rx;
+        const y = -Math.cos(rad) * ry;
         card.style.visibility = 'visible';
         card.style.pointerEvents = 'auto';
-        card.style.transform = 'translate(-50%,0) translate(' + x.toFixed(1) + 'px,' +
-          lift.toFixed(1) + 'px) rotate(' + rot.toFixed(1) + 'deg)';
-        card.style.zIndex = String(100 + Math.round((1 - Math.abs(edge)) * 100));
+        // left/top 50% 已把牌心锚在容器中央，translate 用弧坐标摆放。
+        card.style.transform = 'translate(-50%,-50%) translate(' + x.toFixed(1) + 'px,' +
+          y.toFixed(1) + 'px) rotate(' + a.toFixed(2) + 'deg)';
+        card.style.zIndex = String(100 + Math.round(u * 200));
       });
     }
 
@@ -1194,14 +1228,26 @@ function renderBoard(data){
   const all = items.concat(extras);
   const question = (data.question || '').trim();
   const circ = n => BOARD_CIRC[n-1] || (n + '.');
+  // 按后端牌阵几何摆位，而不是固定两列平铺（否则三张牌变成 2+1、十字不成十字）。
+  const lay = (data.layout) || {cols: items.length, rows: 1,
+    cells: items.map((_, i) => [i + 1, 1])};
+  const cols = Math.max(1, lay.cols | 0), rows = Math.max(1, lay.rows | 0);
+  const cells = Array.isArray(lay.cells) ? lay.cells : [];
 
   let cardsHtml = '';
   all.forEach((c, i) => {
     const safe = boardSafeImg(c.image);
     const rev = c.orientation === '逆位';
     const isExtra = i >= items.length;
+    // 补牌落在牌阵末尾的新一格，不占用原有牌位
+    const cell = isExtra ? [((i - items.length) % cols) + 1, rows + 1 + Math.floor((i - items.length) / cols)]
+                         : (cells[i] || [i + 1, 1]);
+    const rot = Number(cell[2]) === 90;
+    const style = 'grid-column:' + Math.max(1, Math.min(cols, Number(cell[0]) || 1)) +
+      ';grid-row:' + Math.max(1, Number(cell[1]) || 1) + ';';
     cardsHtml +=
-      '<button class="bcard' + (isExtra ? ' extra' : '') + '" type="button" data-i="' + i + '"' +
+      '<button class="bcard' + (isExtra ? ' extra' : '') + (rot ? ' rot' : '') + '" type="button" data-i="' + i + '"' +
+        ' style="' + style + '"' +
         ' aria-label="' + escAttr((c.position || '') + '：' + (c.name || '') + ' ' + (c.orientation || '') + '，看大图') + '">' +
         '<span class="b-face">' +
           (safe ? '<img src="' + escAttr(safe) + '" alt="" loading="lazy" class="' + (rev ? 'rev' : '') + '">' : '') +
@@ -1212,6 +1258,12 @@ function renderBoard(data){
         '</span>' +
       '</button>';
   });
+
+  // 牌阵网格的列数 / 间距由 layout 决定；gap 项 (行距,列距) 同 renderCards。
+  const gridVars = 'style="--cols:' + cols + ';--rows:' + rows +
+    (lay.gap && lay.gap.length === 2
+      ? ';--gy:' + (Number(lay.gap[0]) || 0) + 'px;--gx:' + (Number(lay.gap[1]) || 0) + 'px'
+      : '') + '"';
 
   let legendHtml = '';
   items.forEach((c, i) => {
@@ -1233,7 +1285,7 @@ function renderBoard(data){
         ? '<p class="b-drawinfo">手选 · 这 ' + items.length + ' 张由你亲手从牌堆里挑出（正逆位由系统内核熵即时产生，不可复现）</p>'
         : '<p class="b-drawinfo">系统真随机（OS 内核熵）· 每次都不同、不可复现</p>') +
       (question ? '<p class="b-question"><span>你问</span>' + escHtml(question) + '</p>' : '') +
-      '<div class="b-cards">' + cardsHtml + '</div>' +
+      '<div class="b-cards" ' + gridVars + '>' + cardsHtml + '</div>' +
       '<div class="b-acts">' +
         '<button type="button" data-act="spread">牌阵</button>' +
         '<button type="button" data-act="redraw">重抽</button>' +
